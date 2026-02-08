@@ -26,7 +26,7 @@ const (
 	KeyCtrl // For Ctrl+key combinations
 )
 
-// Key reprsent a single key event
+// Key represent a single key event
 type Key struct {
 	Type KeyType
 	Rune rune
@@ -77,7 +77,7 @@ func parseEscapeSequence(r io.Reader) (*Key, error) {
 		return &Key{Type: KeyEscape}, nil
 	}
 
-	// check for arrow keys and other sequencesif
+	// check for arrow keys and other sequences
 	if buff[0] == '[' {
 		if n > 1 {
 			switch buff[1] {
@@ -194,8 +194,5 @@ func parseUTF8(r io.Reader, firstByte byte) (*Key, error) {
 		return nil, fmt.Errorf("invalid UTF-8 sequence")
 	}
 
-	return &Key{
-		Type: KeyRune,
-		Rune: ch,
-	}, nil
+	return &Key{ Type: KeyRune, Rune: ch }, nil
 }
