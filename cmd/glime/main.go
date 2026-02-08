@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/AdityaKrSingh26/Glime/internal/terminal"
+	"github.com/AdityaKrSingh26/Glime/internal/input"
 )
 
 func main() {
-	key, _ := terminal.ReadKey(os.Stdin)
+	key, _ := input.ReadKey(os.Stdin)
 	fmt.Printf("Key: %+v\n", key)
 }
