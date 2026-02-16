@@ -21,7 +21,7 @@ type Terminal struct {
 // create new terminal instance
 // does not enable raw mode automatically - call EnableRawMode() explicitly.
 func New() (*Terminal, error) {
-	fd := int(os.Stdin().Fd())
+	fd := int(os.Stdin.Fd())
 
 	if !term.IsTerminal(fd) {
 		return nil, fmt.Errorf("stdin is not in terminal")
