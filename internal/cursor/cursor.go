@@ -71,7 +71,7 @@ func (c *Cursor) MoveTo(row, col int, buff *buffer.Buffer) {
 // adjust the column to be in lines bound
 // maintain desired column while moving up and down
 func (c *Cursor) clampColumn(buff *buffer.Buffer) {
-	lineLen, _ := buff.LineLength()
+	lineLen, _ := buff.LineLength(c.row)
 
 	if c.desiredCol <= lineLen {
 		c.col = c.desiredCol
