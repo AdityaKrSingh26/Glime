@@ -143,3 +143,8 @@ func (e *Editor) processKey(key *input.Key) error {
 	return nil
 }
 
+// sets the message to display in the message bar.
+func (e *Editor) setMessage(msg string) {
+	e.message = msg
+	e.messageTime = time.Now()
+}
