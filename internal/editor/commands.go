@@ -27,8 +27,20 @@ func (e *Editor) executeCommand(cmd string) error {
 	case "q!":
 		return e.commandQuit(true)
 	case "w":
+		if len(parts) > 1 {
+			return e.commandWriteAs(parts[1])
+		}
 		return e.commandWrite()
 	case "wq":
+		if len(parts) > 1 {
+			if err := e.commandWriteAs(parts[1]); err != nil {
+				return err
+			}
+			if !e.buffer.IsModified() {
+				e.shouldQuit = true
+			}
+			return nil
+		}
 		return e.commandWriteQuit()
 	case "x":
 		return e.commandWriteQuit() // Same as :wq
@@ -78,6 +90,13 @@ func (e *Editor) commandWrite() error {
 	e.buffer.SetModified(false)
 	e.setMessage(fmt.Sprintf("\"%s\" %dL written", e.buffer.FileName(), e.buffer.NumLines()))
 	return nil
+}
+
+// sets the file path and language, then saves the buffer.
+func (e *Editor) commandWriteAs(filePath string) error {
+	e.buffer.SetFilePath(filePath)
+	e.renderer.SetLanguage(filePath)
+	return e.commandWrite()
 }
 
 func (e *Editor) commandWriteQuit() error {
