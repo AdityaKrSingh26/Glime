@@ -54,8 +54,9 @@ func ReadKey(r io.Reader) (*Key, error) {
 		return parseEscapeSequence(r)
 	}
 
-	// handle control characters
-	if b == 0x20 {
+	// handle ASCII control characters (bytes 0x01–0x1f, excluding 0x1b handled above)
+	// e.g. 0x0d = Enter, 0x03 = Ctrl+C, 0x12 = Ctrl+R, 0x09 = Tab
+	if b < 0x20 {
 		return parseControlChar(b)
 	}
 
@@ -164,8 +165,6 @@ func parseUTF8(r io.Reader, firstByte byte) (*Key, error) {
 	}
 
 	// multi-byte UTF-8 character
-	buff := make([]byte, 4)
-
 	// determine how many bytes we need
 	var size int
 	if firstByte>>5 == 0b110 {
@@ -178,8 +177,11 @@ func parseUTF8(r io.Reader, firstByte byte) (*Key, error) {
 		return nil, fmt.Errorf("invalid UTF-8 start byte: %x", firstByte)
 	}
 
-	// read remaining bytes
-	remaining := make([]byte, size-1)
+	// build a correctly-ordered buffer: firstByte at index 0, then the rest
+	buff := make([]byte, size)
+	buff[0] = firstByte
+
+	remaining := buff[1:]
 	n, err := r.Read(remaining)
 	if err != nil {
 		return nil, err
@@ -187,12 +189,11 @@ func parseUTF8(r io.Reader, firstByte byte) (*Key, error) {
 	if n != size-1 {
 		return nil, fmt.Errorf("incomplete UTF-8 character")
 	}
-	buff = append(buff, remaining...)
 
 	ch, _ := utf8.DecodeRune(buff)
 	if ch == utf8.RuneError {
 		return nil, fmt.Errorf("invalid UTF-8 sequence")
 	}
 
-	return &Key{ Type: KeyRune, Rune: ch }, nil
+	return &Key{Type: KeyRune, Rune: ch}, nil
 }

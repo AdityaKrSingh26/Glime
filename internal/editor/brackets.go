@@ -19,19 +19,20 @@ var bracketPairs = []BracketPair{
 }
 
 // finds the matching bracket for the character at (row, col).
+// col is a rune (code-point) index, not a byte index.
 // returns nil if the character is not a bracket or no match is found.
 func FindMatchingBracket(lines []string, row, col int) *BracketMatch {
 	if row < 0 || row >= len(lines) {
 		return nil
 	}
-	line := lines[row]
-	if col < 0 || col >= len(line) {
+	runes := []rune(lines[row])
+	if col < 0 || col >= len(runes) {
 		return nil
 	}
 
-	ch := rune(line[col])
+	ch := runes[col]
 
-	// check if it is an opening bracket
+	// check if it is an opening or closing bracket
 	for _, pair := range bracketPairs {
 		if ch == pair.Open {
 			return scanForward(lines, row, col, pair.Open, pair.Close)
@@ -45,25 +46,26 @@ func FindMatchingBracket(lines []string, row, col int) *BracketMatch {
 }
 
 // scans forward from (row, col) to find the matching close bracket.
+// all column indices are rune offsets.
 func scanForward(lines []string, startRow, startCol int, open, close rune) *BracketMatch {
 	depth := 0
 
 	for row := startRow; row < len(lines); row++ {
-		line := lines[row]
+		runes := []rune(lines[row])
 		startC := 0
 		if row == startRow {
 			startC = startCol
 		}
 
-		for col := startC; col < len(line); col++ {
-			ch := rune(line[col])
+		for col := startC; col < len(runes); col++ {
+			ch := runes[col]
 			if ch == open {
 				depth++
 			} else if ch == close {
 				depth--
 				if depth == 0 {
 					return &BracketMatch{
-						Row: row, 
+						Row: row,
 						Col: col,
 					}
 				}
@@ -75,25 +77,26 @@ func scanForward(lines []string, startRow, startCol int, open, close rune) *Brac
 }
 
 // scans backward from (row, col) to find the matching open bracket.
+// all column indices are rune offsets.
 func scanBackward(lines []string, startRow, startCol int, close, open rune) *BracketMatch {
 	depth := 0
 
 	for row := startRow; row >= 0; row-- {
-		line := lines[row]
-		endC := len(line) - 1
+		runes := []rune(lines[row])
+		endC := len(runes) - 1
 		if row == startRow {
 			endC = startCol
 		}
 
 		for col := endC; col >= 0; col-- {
-			ch := rune(line[col])
+			ch := runes[col]
 			if ch == close {
 				depth++
 			} else if ch == open {
 				depth--
 				if depth == 0 {
 					return &BracketMatch{
-						Row: row, 
+						Row: row,
 						Col: col,
 					}
 				}

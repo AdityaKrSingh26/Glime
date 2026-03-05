@@ -34,8 +34,8 @@ func (t *Terminal) EnableRawMode() error {
 // DisableRawMode restores the terminal to its original state.
 // This should always be called before program exit, typically in a defer.
 func (t *Terminal) DisableRawMode() error {
-	if t.original_state != nil {
-		return nil // already in raw mode
+	if t.original_state == nil {
+		return nil // already not in raw mode
 	}
 
 	if err := term.Restore(t.fd, t.original_state); err != nil {

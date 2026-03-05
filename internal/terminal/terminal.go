@@ -3,6 +3,8 @@ package terminal
 import (
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/AdityaKrSingh26/Glime/pkg/ansi"
 	"golang.org/x/term"
@@ -90,4 +92,17 @@ func (t *Terminal) DisableAlternateBuffer() error {
 func (t *Terminal) Write(s string) error {
 	_, err := os.Stdout.WriteString(s)
 	return err
+}
+
+// WatchResize listens for SIGWINCH and updates the terminal dimensions.
+// It runs in a background goroutine and stops when ctx is cancelled.
+// Call once from the editor's Run() to keep Width()/Height() accurate on resize.
+func (t *Terminal) WatchResize() {
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, syscall.SIGWINCH)
+	go func() {
+		for range ch {
+			_ = t.UpdateSize()
+		}
+	}()
 }

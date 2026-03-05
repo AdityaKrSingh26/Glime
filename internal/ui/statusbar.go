@@ -3,11 +3,20 @@ package ui
 import (
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/AdityaKrSingh26/Glime/internal/syntax"
 	"github.com/AdityaKrSingh26/Glime/pkg/ansi"
 )
+
+// ansiEscape matches any ANSI escape sequence.
+var ansiEscape = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+
+// visibleLen returns the number of visible (non-ANSI) characters in s.
+func visibleLen(s string) int {
+	return len(ansiEscape.ReplaceAllString(s, ""))
+}
 
 // creates a colorful, segmented status bar with modern styling.
 func EnhancedStatusBar(
@@ -42,8 +51,8 @@ func EnhancedStatusBar(
 	// Position segment (rendered at the right end)
 	posText := fmt.Sprintf(" %d,%d  %d%% ", row, col, percentage)
 
-	// Calculate used width so far
-	usedWidth := len(modeText) + len(fileText)
+	// Calculate used visible width so far (strip ANSI codes before measuring)
+	usedWidth := visibleLen(modeText) + visibleLen(fileText)
 
 	// Language segment if there's space
 	lang := syntax.LanguageName(fileName)

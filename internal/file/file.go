@@ -52,16 +52,9 @@ func Save(filePath string, lines []string) error {
 	writer := bufio.NewWriter(file)
 	defer writer.Flush()
 
-	for i, line := range lines {
-		if _, err := writer.WriteString(line); err != nil {
-			return fmt.Errorf("failed to write newline: %w", err)
-		}
-
-		// add new line except for last line
-		if i < len(lines)-1 {
-			if _, err := writer.WriteString("\n"); err != nil {
-				return fmt.Errorf("failed to write new line: %w", err)
-			}
+	for _, line := range lines {
+		if _, err := writer.WriteString(line + "\n"); err != nil {
+			return fmt.Errorf("failed to write line: %w", err)
 		}
 	}
 

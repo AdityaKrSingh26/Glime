@@ -60,7 +60,7 @@ func LanguageName(filename string) string {
 	case ".sh", ".bash":
 		return "Shell"
 	default:
-		return "Plain"
+		return ""
 	}
 }
 

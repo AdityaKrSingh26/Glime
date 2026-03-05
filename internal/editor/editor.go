@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/AdityaKrSingh26/Glime/internal/buffer"
 	"github.com/AdityaKrSingh26/Glime/internal/cursor"
@@ -94,6 +95,9 @@ func (e *Editor) Run() error {
 	}
 	defer e.terminal.DisableAlternateBuffer()
 
+	// watch for terminal resize (SIGWINCH)
+	e.terminal.WatchResize()
+
 	// hide cursor during setup
 	if err := e.terminal.HideCursor(); err != nil {
 		return err
@@ -179,7 +183,7 @@ func (e *Editor) processNormalMode(key *input.Key) error {
 		return nil
 	case input.KeyEnd:
 		e.pending.Reset()
-		e.cursor.MoveToLineEnd(e.buffer)
+		e.cursor.MoveToLineEndNormal(e.buffer)
 		return nil
 	case input.KeyEscape:
 		e.pending.Reset()
@@ -302,7 +306,7 @@ func (e *Editor) executeNormalCommand(ch rune) error {
 	case '0':
 		e.cursor.MoveToLineStart()
 	case '$':
-		e.cursor.MoveToLineEnd(e.buffer)
+		e.cursor.MoveToLineEndNormal(e.buffer)
 	case 'G':
 		e.cursor.MoveToLastLine(e.buffer)
 	case 'w':
@@ -448,35 +452,53 @@ func (e *Editor) enterSearchMode(dir SearchDirection) {
 	e.setMode(ModeSearch)
 }
 
-// jumps to the next search match.
+// searchNext jumps in the original search direction (n key).
 func (e *Editor) searchNext() {
 	if !e.search.Active || len(e.search.Matches) == 0 {
 		e.setMessage("No search pattern")
 		return
 	}
 
-	idx := e.search.NextMatch(e.cursor.Row(), e.cursor.Col())
+	var idx int
+	if e.search.Direction == SearchForward {
+		idx = e.search.NextMatch(e.cursor.Row(), e.cursor.Col())
+	} else {
+		idx = e.search.PrevMatch(e.cursor.Row(), e.cursor.Col())
+	}
 	if idx >= 0 {
 		m := e.search.Matches[idx]
 		e.search.CurrentIndex = idx
 		e.cursor.MoveTo(m.Row, m.ColStart, e.buffer)
-		e.setMessage(fmt.Sprintf("/%s [%d/%d]", e.search.Pattern, idx+1, len(e.search.Matches)))
+		dir := "/"
+		if e.search.Direction == SearchBackward {
+			dir = "?"
+		}
+		e.setMessage(fmt.Sprintf("%s%s [%d/%d]", dir, e.search.Pattern, idx+1, len(e.search.Matches)))
 	}
 }
 
-// jumps to the previous search match.
+// searchPrev jumps opposite to the original search direction (N key).
 func (e *Editor) searchPrev() {
 	if !e.search.Active || len(e.search.Matches) == 0 {
 		e.setMessage("No search pattern")
 		return
 	}
 
-	idx := e.search.PrevMatch(e.cursor.Row(), e.cursor.Col())
+	var idx int
+	if e.search.Direction == SearchForward {
+		idx = e.search.PrevMatch(e.cursor.Row(), e.cursor.Col())
+	} else {
+		idx = e.search.NextMatch(e.cursor.Row(), e.cursor.Col())
+	}
 	if idx >= 0 {
 		m := e.search.Matches[idx]
 		e.search.CurrentIndex = idx
 		e.cursor.MoveTo(m.Row, m.ColStart, e.buffer)
-		e.setMessage(fmt.Sprintf("?%s [%d/%d]", e.search.Pattern, idx+1, len(e.search.Matches)))
+		dir := "/"
+		if e.search.Direction == SearchBackward {
+			dir = "?"
+		}
+		e.setMessage(fmt.Sprintf("%s%s [%d/%d]", dir, e.search.Pattern, idx+1, len(e.search.Matches)))
 	}
 }
 
@@ -714,7 +736,7 @@ func (e *Editor) paste(afterCursor bool) {
 			CursorCol: col,
 		})
 		e.buffer.SetLine(row, newLine)
-		e.cursor.MoveTo(row, insertCol+len(e.register.Content)-1, e.buffer)
+		e.cursor.MoveTo(row, insertCol+utf8.RuneCountInString(e.register.Content)-1, e.buffer)
 	}
 
 	e.undoMgr.EndGroup()
@@ -756,10 +778,10 @@ func (e *Editor) redo() {
 		e.applyForward(a)
 	}
 
-	// Move cursor to end of last action
+	// Restore cursor to the position saved at the time of the last action
 	if len(group.Actions) > 0 {
 		last := group.Actions[len(group.Actions)-1]
-		e.cursor.MoveTo(last.Row, last.Col, e.buffer)
+		e.cursor.MoveTo(last.CursorRow, last.CursorCol, e.buffer)
 	}
 
 	e.setMessage("Redone")

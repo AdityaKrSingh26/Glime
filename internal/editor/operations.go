@@ -74,11 +74,13 @@ func (e *Editor) findWordStart(row, col int) (int, int) {
 	line := lines[row]
 	col-- // move back one
 
+	// skip trailing whitespace to get to the previous word
 	for col > 0 && unicode.IsSpace(rune(line[col])) {
 		col--
 	}
 
 	if col == 0 {
+		// col 0 may itself be the start of a word — let the caller handle it
 		return row, 0
 	}
 
@@ -123,7 +125,7 @@ func (e *Editor) deleteLines(count int) error {
 		Type:    RegisterLine,
 	}
 
-	// record undo actions and delete in reverse order
+	// record undo actions (reverse order so undo re-inserts bottom-up)
 	e.undoMgr.BeginGroup()
 	for i := count - 1; i >= 0; i-- {
 		lineText := lines[row+i]
@@ -135,12 +137,12 @@ func (e *Editor) deleteLines(count int) error {
 			CursorCol: e.cursor.Col(),
 		})
 	}
-	e.undoMgr.EndGroup()
 
-	// deletions
+	// perform deletions
 	for i := 0; i < count; i++ {
 		e.buffer.DeleteLine(row)
 	}
+	e.undoMgr.EndGroup()
 
 	// adjust cursor position
 	if row >= e.buffer.NumLines() {

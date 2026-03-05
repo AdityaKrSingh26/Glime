@@ -134,10 +134,23 @@ func (c *Cursor) MoveToLineStart() {
 }
 
 // moves the cursor to the end of the current line.
+// col is allowed to equal lineLen (one past last char) — valid in Insert mode.
 func (c *Cursor) MoveToLineEnd(buf *buffer.Buffer) {
 	lineLen, _ := buf.LineLength(c.row)
 	c.col = lineLen
 	c.desiredCol = lineLen
+}
+
+// moves the cursor to the last character of the current line.
+// col is clamped to lineLen-1 — correct for Normal mode where cursor must sit ON a character.
+func (c *Cursor) MoveToLineEndNormal(buf *buffer.Buffer) {
+	lineLen, _ := buf.LineLength(c.row)
+	if lineLen > 0 {
+		c.col = lineLen - 1
+	} else {
+		c.col = 0
+	}
+	c.desiredCol = c.col
 }
 
 // moves the cursor to the first line of the buffer.
