@@ -184,6 +184,7 @@ func (r *Renderer) renderExplorer(view EditorView) {
 
 	// Row 2: separator
 	r.terminal.MoveCursorTo(2, 1)
+	r.terminal.WriteStr(ansi.ClearLine)
 	r.terminal.WriteStr(ansi.SetFgColor(r.theme.Border))
 	r.terminal.WriteStr(strings.Repeat("─", view.TermWidth))
 	r.terminal.ResetFormat()
@@ -191,6 +192,7 @@ func (r *Renderer) renderExplorer(view EditorView) {
 	// Rows 3+: entries
 	for y := 0; y < listingRows; y++ {
 		r.terminal.MoveCursorTo(y+3, 1)
+		r.terminal.WriteStr(ansi.ClearLine)
 
 		idx := y + ev.RowOffset
 		if idx >= len(ev.Entries) {
@@ -204,6 +206,7 @@ func (r *Renderer) renderExplorer(view EditorView) {
 
 func (r *Renderer) renderExplorerHeader(dir string, termWidth int) {
 	r.terminal.MoveCursorTo(1, 1)
+	r.terminal.WriteStr(ansi.ClearLine)
 	r.terminal.WriteStr(ansi.SetFgColor(r.theme.Function))
 	r.terminal.WriteStr(ansi.Bold)
 	r.terminal.WriteStr(" netrw")
@@ -264,8 +267,10 @@ func (r *Renderer) renderBuffer(view EditorView) {
 	for y := 0; y < visibleRows; y++ {
 		fileRow := y + view.RowOffset
 
-		// Move cursor to this row
+		// Move cursor to this row and clear it entirely.
+		// this prevents stale content from showing through tab gaps
 		r.terminal.MoveCursorTo(y+1, 1)
+		r.terminal.WriteStr(ansi.ClearLine)
 
 		if fileRow >= len(view.Lines) {
 			// Past end of file - show empty gutter and tilde
