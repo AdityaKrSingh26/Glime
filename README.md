@@ -21,6 +21,137 @@ A terminal-based modal text editor written from scratch in Go. Inspired by Vim's
 ### Glime File editor: 
 <img width="1823" height="966" alt="image" src="https://github.com/user-attachments/assets/8f0d3e65-feb6-4d68-bfa5-f3470ae616b8" />
 
+## Diagrams
+
+### Architecture
+```mermaid
+graph TB
+      subgraph CMD["cmd/glime"]
+          main["main.go<br/><i>Entry Point</i>"]
+      end
+
+      subgraph EDITOR["internal/editor"]
+          editor["Editor<br/><i>State Machine</i>"]
+          modes["Modes<br/>Normal · Insert · Command<br/>Search · Explore"]
+          commands["Commands<br/>:w :q :wq :E :line"]
+          multikey["Multi-Key<br/>Operator + Motion<br/>Count Prefix"]
+          undo["Undo Manager<br/>Action Groups<br/>Undo/Redo Stack"]
+          search["Search<br/>Regex Match<br/>Forward/Backward"]
+          explorer["Explorer<br/>Directory Browser<br/>File Open"]
+          register["Register<br/>Yank/Paste"]
+          brackets["Brackets<br/>Match () {} []"]
+          operations["Operations<br/>Word Motion"]
+      end
+
+      subgraph BUFFER["internal/buffer"]
+          buf["Buffer<br/><i>[]string lines</i><br/>Insert / Delete"]
+          fileio["File I/O<br/>Load / Save / Backup"]
+      end
+
+      subgraph CURSOR["internal/cursor"]
+          cur["Cursor<br/><i>Row, Col, Offsets</i><br/>Scroll Management"]
+      end
+
+      subgraph TERMINAL["internal/terminal"]
+          term["Terminal<br/><i>Raw Mode</i><br/>Screen Buffer"]
+          keyboard["Keyboard<br/>Key Parsing<br/>Escape Sequences"]
+      end
+
+      subgraph UI["internal/ui"]
+          renderer["Renderer<br/><i>Full Frame Render</i><br/>Atomic Write"]
+          theme["Theme<br/>256-Color Palette<br/>Glime Modern Dark"]
+          statusbar["Status Bar<br/>Segmented Design<br/>Mode Icons"]
+      end
+
+      subgraph SYNTAX["internal/syntax"]
+          highlighter["Highlighter<br/>Tokenize & Colorize"]
+          language["Language<br/>Go · JS · Python<br/>Regex Rules"]
+      end
+
+      subgraph ANSI["pkg/ansi"]
+          ansi["ANSI Escape<br/>Colors 256/RGB<br/>Cursor Control"]
+      end
+
+      %% Main flow
+      main -->|creates| editor
+
+      %% Editor internals
+      editor --- modes
+      editor --- commands
+      editor --- multikey
+      editor --- undo
+      editor --- search
+      editor --- explorer
+      editor --- register
+      editor --- brackets
+      editor --- operations
+
+      %% Editor to core packages
+      editor -->|"read/write text"| buf
+      editor -->|"position & scroll"| cur
+      editor -->|"buildView → Render"| renderer
+      editor -->|"ReadKey / raw mode"| term
+
+      %% UI connections
+      renderer -->|"WriteStr"| term
+      renderer -->|"Highlight per line"| highlighter
+      renderer --- theme
+      renderer --- statusbar
+
+      %% Syntax
+      highlighter --> language
+      highlighter -->|"SetFgColor"| ansi
+
+      %% Terminal
+      term --- keyboard
+      term -->|"escape codes"| ansi
+
+      %% Cursor bounds
+      cur -.->|"bounds checking"| buf
+
+      %% Buffer file I/O
+      buf --- fileio
+
+      %% Styling
+      classDef pkgStyle fill:#21262d,stroke:#30363d,color:#c9d1d9
+      classDef editorStyle fill:#1c2128,stroke:#58a6ff,color:#c9d1d9
+      classDef uiStyle fill:#1c2128,stroke:#f0883e,color:#c9d1d9
+      classDef syntaxStyle fill:#1c2128,stroke:#a5d6ff,color:#c9d1d9
+      classDef termStyle fill:#1c2128,stroke:#7ee787,color:#c9d1d9
+      classDef ansiStyle fill:#1c2128,stroke:#8b949e,color:#c9d1d9
+
+      class main,editor,modes,commands,multikey,undo,search,explorer,register,brackets,operations editorStyle
+      class buf,fileio,cur pkgStyle
+      class renderer,theme,statusbar uiStyle
+      class highlighter,language syntaxStyle
+      class term,keyboard termStyle
+      class ansi ansiStyle
+```
+
+### Dependency Graph
+```mermaid
+  graph LR
+      main["cmd/glime"] --> editor["internal/editor"]
+      editor --> buffer["internal/buffer"]
+      editor --> cursor["internal/cursor"]
+      editor --> terminal["internal/terminal"]
+      editor --> ui["internal/ui"]
+      ui --> terminal
+      ui --> syntax["internal/syntax"]
+      ui --> ansi["pkg/ansi"]
+      syntax --> ansi
+      terminal --> ansi
+      cursor -.-> buffer
+
+      style main fill:#388bfd,stroke:#388bfd,color:#fff
+      style editor fill:#f0883e,stroke:#f0883e,color:#fff
+      style buffer fill:#7ee787,stroke:#7ee787,color:#000
+      style cursor fill:#7ee787,stroke:#7ee787,color:#000
+      style terminal fill:#d2a8ff,stroke:#d2a8ff,color:#000
+      style ui fill:#ff7b72,stroke:#ff7b72,color:#fff
+      style syntax fill:#79c0ff,stroke:#79c0ff,color:#000
+      style ansi fill:#8b949e,stroke:#8b949e,color:#fff
+```
 
 ## Quick Start
 
