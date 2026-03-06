@@ -14,6 +14,14 @@ A terminal-based modal text editor written from scratch in Go. Inspired by Vim's
 - **Status Bar** - Mode indicator, filename, language, cursor position, scroll percentage
 - **Line Numbers** - Dynamic gutter with current line highlight
 
+## UI
+### Glime File Explorer:
+<img width="1831" height="968" alt="image" src="https://github.com/user-attachments/assets/0108c6ca-84a6-4a6d-951f-a6d90d7d8625" />
+
+### Glime File editor: 
+<img width="1823" height="966" alt="image" src="https://github.com/user-attachments/assets/8f0d3e65-feb6-4d68-bfa5-f3470ae616b8" />
+
+
 ## Quick Start
 
 ```bash
