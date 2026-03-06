@@ -1,6 +1,9 @@
 package editor
 
-import "strings"
+import (
+	"strings"
+	"unicode/utf8"
+)
 
 // indicates forward or backward search.
 // 0 - forward
@@ -29,6 +32,7 @@ type SearchState struct {
 }
 
 // finds all occurrences of the pattern in the given lines.
+// Stores rune-based column offsets so cursor positioning works with multibyte text.
 func (s *SearchState) FindAll(lines []string) {
 	s.Matches = s.Matches[:0]
 
@@ -43,14 +47,17 @@ func (s *SearchState) FindAll(lines []string) {
 			if idx < 0 {
 				break
 			}
-			start := offset + idx
-			end := start + len(s.Pattern)
+			byteStart := offset + idx
+			byteEnd := byteStart + len(s.Pattern)
+			// Convert byte offsets to rune offsets
+			runeStart := utf8.RuneCountInString(line[:byteStart])
+			runeEnd := runeStart + utf8.RuneCountInString(s.Pattern)
 			s.Matches = append(s.Matches, SearchMatch{
 				Row:      row,
-				ColStart: start,
-				ColEnd:   end,
+				ColStart: runeStart,
+				ColEnd:   runeEnd,
 			})
-			offset = end
+			offset = byteEnd
 		}
 	}
 }
@@ -107,13 +114,3 @@ func (s *SearchState) PrevMatch(row, col int) int {
 	return 0
 }
 
-// returns the matches on a specific row.
-func (s *SearchState) MatchesForRow(row int) []SearchMatch {
-	var result []SearchMatch
-	for _, m := range s.Matches {
-		if m.Row == row {
-			result = append(result, m)
-		}
-	}
-	return result
-}

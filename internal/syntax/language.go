@@ -109,7 +109,7 @@ func GoLanguage() *Language {
 		{regexp.MustCompile(`\b[A-Z][a-zA-Z0-9_]*\b`), TokenTypeName},
 
 		// Function calls
-		{regexp.MustCompile(`\b[a-z_][a-zA-Z0-9_]*\s*(?=\()`), TokenFunction},
+		{regexp.MustCompile(`\b[a-z_][a-zA-Z0-9_]*\(`), TokenFunction},
 
 		// Operators
 		{regexp.MustCompile(`[+\-*/%&|^<>=!:]+`), TokenOperator},
@@ -144,7 +144,7 @@ func JavaScriptLanguage() *Language {
 		{regexp.MustCompile(`\b(?:Array|Boolean|Date|Error|Function|JSON|Math|Number|Object|Promise|RegExp|String|Symbol|console|document|window|null|undefined|true|false|NaN|Infinity)\b`), TokenBuiltin},
 
 		// Function calls
-		{regexp.MustCompile(`\b[a-zA-Z_$][a-zA-Z0-9_$]*\s*(?=\()`), TokenFunction},
+		{regexp.MustCompile(`\b[a-zA-Z_$][a-zA-Z0-9_$]*\(`), TokenFunction},
 
 		// Operators
 		{regexp.MustCompile(`[+\-*/%&|^<>=!:?]+`), TokenOperator},
@@ -182,7 +182,7 @@ func PythonLanguage() *Language {
 		{regexp.MustCompile(`\bdef\s+([a-zA-Z_][a-zA-Z0-9_]*)`), TokenFunction},
 
 		// Function calls
-		{regexp.MustCompile(`\b[a-zA-Z_][a-zA-Z0-9_]*\s*(?=\()`), TokenFunction},
+		{regexp.MustCompile(`\b[a-zA-Z_][a-zA-Z0-9_]*\(`), TokenFunction},
 
 		// Operators
 		{regexp.MustCompile(`[+\-*/%&|^<>=!:]+`), TokenOperator},

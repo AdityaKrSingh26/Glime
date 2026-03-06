@@ -2,7 +2,10 @@ package buffer
 
 import (
 	"fmt"
+	"path/filepath"
+	"slices"
 	"strings"
+	"unicode/utf8"
 )
 
 // this is to provide text buffer management to text editor
@@ -10,7 +13,6 @@ import (
 
 // Buffer represents the text content being edited.
 // It stores text as a slice of lines and tracks the modification state.
-// Note : not safe to concurrent access
 type Buffer struct {
 	lines    []string
 	modified bool   // Whether buffer has unsaved changes
@@ -52,55 +54,60 @@ func (b *Buffer) GetLine(row int) (string, error) {
 }
 
 // returns all lines in the buffer.
+// Returns internal slice — do not modify.
 func (b *Buffer) GetLines() []string {
 	return b.lines
 }
 
-// returns the length of the specified line.
+// returns the length of the specified line in runes (not bytes).
 func (b *Buffer) LineLength(row int) (int, error) {
 	if row < 0 || row >= len(b.lines) {
 		return 0, fmt.Errorf("line %d out of bounds", row)
 	}
-	return len(b.lines[row]), nil
+	return utf8.RuneCountInString(b.lines[row]), nil
 }
 
-// insert a new character at a give row, col
+// insert a new character at a given row, col (rune index).
 // return error if row/col is out of bounds
 func (b *Buffer) InsertChar(row, col int, ch rune) error {
 	if row < 0 || row >= len(b.lines) {
 		return fmt.Errorf("row %d out of bounds", row)
 	}
 
-	line := b.lines[row]
-	if col < 0 || col > len(line) {
-		return fmt.Errorf("col %d out of bounds (0-%d)", col, len(line))
+	runes := []rune(b.lines[row])
+	if col < 0 || col > len(runes) {
+		return fmt.Errorf("col %d out of bounds (0-%d)", col, len(runes))
 	}
 
-	// Insert character at position
-	b.lines[row] = line[:col] + string(ch) + line[col:]
+	// Insert character at rune position
+	newRunes := make([]rune, 0, len(runes)+1)
+	newRunes = append(newRunes, runes[:col]...)
+	newRunes = append(newRunes, ch)
+	newRunes = append(newRunes, runes[col:]...)
+	b.lines[row] = string(newRunes)
 	b.modified = true
 	return nil
 }
 
-// delete a char at a give row, col
+// delete a char at a given row, col (rune index).
 // return nil if end of line || error if row/char out of bound
 func (b *Buffer) DeleteChar(row, col int) error {
 	if row < 0 || row >= len(b.lines) {
 		return fmt.Errorf("row %d out of bounds", row)
 	}
 
-	line := b.lines[row]
-	if col < 0 || col > len(line) {
+	runes := []rune(b.lines[row])
+	if col < 0 || col > len(runes) {
 		return fmt.Errorf("col %d out of bounds", col)
 	}
 
 	// end of line, nothing to delete
-	if col == len(line) {
+	if col == len(runes) {
 		return nil
 	}
 
-	// Delete character at position
-	b.lines[row] = line[:col] + line[col+1:]
+	// Delete character at rune position
+	b.lines[row] = string(append(runes[:col], runes[col+1:]...))
 	b.modified = true
 	return nil
 }
@@ -113,7 +120,7 @@ func (b *Buffer) InsertLine(row int) error {
 	}
 
 	// Insert empty line
-	b.lines = append(b.lines[:row], append([]string{""}, b.lines[row:]...)...)
+	b.lines = slices.Insert(b.lines, row, "")
 	b.modified = true
 	return nil
 }
@@ -137,7 +144,7 @@ func (b *Buffer) DeleteLine(row int) error {
 	return nil
 }
 
-// splits the line at the specified position.
+// splits the line at the specified rune position.
 // text after col becomes a new line inserted below.
 // used when pressing Enter in the middle of a line.
 func (b *Buffer) SplitLine(row, col int) error {
@@ -145,17 +152,17 @@ func (b *Buffer) SplitLine(row, col int) error {
 		return fmt.Errorf("row %d out of bounds", row)
 	}
 
-	line := b.lines[row]
-	if col < 0 || col > len(line) {
+	runes := []rune(b.lines[row])
+	if col < 0 || col > len(runes) {
 		return fmt.Errorf("col %d out of bounds", col)
 	}
 
-	// Split line at column
-	before := line[:col]
-	after := line[col:]
+	// Split line at rune column
+	before := string(runes[:col])
+	after := string(runes[col:])
 
 	b.lines[row] = before
-	b.lines = append(b.lines[:row+1], append([]string{after}, b.lines[row+1:]...)...)
+	b.lines = slices.Insert(b.lines, row+1, after)
 	b.modified = true
 	return nil
 }
@@ -173,7 +180,7 @@ func (b *Buffer) JoinLines(row int) error {
 	return nil
 }
 
-// Backspace deletes the character before the cursor.
+// deletes the character before the cursor (rune-indexed col).
 // start of a line (col=0), it joins with the previous line.
 func (b *Buffer) Backspace(row, col int) (newRow, newCol int, err error) {
 	if row < 0 || row >= len(b.lines) {
@@ -187,20 +194,20 @@ func (b *Buffer) Backspace(row, col int) (newRow, newCol int, err error) {
 
 	// If at start of line, join with previous line
 	if col == 0 {
-		prevLineLen := len(b.lines[row-1])
+		prevLineLen := utf8.RuneCountInString(b.lines[row-1])
 		if err := b.JoinLines(row - 1); err != nil {
 			return row, col, err
 		}
 		return row - 1, prevLineLen, nil
 	}
 
-	// Delete previous character
-	line := b.lines[row]
-	if col > len(line) {
-		col = len(line)
+	// Delete previous character at rune position
+	runes := []rune(b.lines[row])
+	if col > len(runes) {
+		col = len(runes)
 	}
 
-	b.lines[row] = line[:col-1] + line[col:]
+	b.lines[row] = string(append(runes[:col-1], runes[col:]...))
 	b.modified = true
 	return row, col - 1, nil
 }
@@ -221,7 +228,7 @@ func (b *Buffer) InsertLineWithContent(row int, text string) error {
 	if row < 0 || row > len(b.lines) {
 		return fmt.Errorf("row %d out of bounds (0-%d)", row, len(b.lines))
 	}
-	b.lines = append(b.lines[:row], append([]string{text}, b.lines[row:]...)...)
+	b.lines = slices.Insert(b.lines, row, text)
 	b.modified = true
 	return nil
 }
@@ -248,8 +255,19 @@ func (b *Buffer) FileName() string {
 		return "[No Name]"
 	}
 
-	parts := strings.Split(b.filePath, "/")
-	return parts[len(parts)-1]
+	return filepath.Base(b.filePath)
+}
+
+// runeSlice returns the substring from rune index start to end.
+func RuneSlice(s string, start, end int) string {
+	runes := []rune(s)
+	if start > len(runes) {
+		start = len(runes)
+	}
+	if end > len(runes) {
+		end = len(runes)
+	}
+	return string(runes[start:end])
 }
 
 func (b *Buffer) IsEmpty() bool {

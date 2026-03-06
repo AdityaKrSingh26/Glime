@@ -1,146 +1,220 @@
 # Glime
 
-A terminal-based modal text editor written from scratch in Go. Glime is a lightweight, terminal-based text editor built entirely in Go, inspired by Vim's modal editing philosophy. This project demonstrates deep systems programming knowledge, clean architecture, and professional Go development practices.
-
+A terminal-based modal text editor written from scratch in Go. Inspired by Vim's modal editing philosophy, Glime is lightweight, fast, and built with clean architecture.
 
 ## Features
 
-- **Modal Editing** - Vim-inspired Normal, Insert, and Command modes
-- **Fast & Lightweight** - Minimal dependencies, pure Go implementation
-- **Core Editing** - Insert, delete, navigate, save, and load files
-- **Full Keyboard Support** - Arrow keys, special keys, UTF-8 characters
-- **Status Bar** - Real-time mode, file, and cursor information
-- **Clean Architecture** - Well-organized, testable, maintainable code
+- **Modal Editing** - Vim-inspired Normal, Insert, Command, and Search modes
+- **Syntax Highlighting** - Go, JavaScript, and Python with a 256-color theme
+- **File Explorer** - netrw-style directory browser (`:E` or open a directory)
+- **Search** - Incremental forward (`/`) and backward (`?`) search with highlighting
+- **Undo/Redo** - Grouped undo (`u`) and redo (`Ctrl+r`)
+- **Yank & Paste** - Line and character-level copy/paste (`yy`, `dd`, `p`, `P`)
+- **Bracket Matching** - Highlights matching brackets and parentheses
+- **Status Bar** - Mode indicator, filename, language, cursor position, scroll percentage
+- **Line Numbers** - Dynamic gutter with current line highlight
 
 ## Quick Start
 
-### Installation
-
 ```bash
-# Clone the repository
-git clone https://github.com/yourusername/glime.git
-cd glime
+# Clone and build
+git clone https://github.com/AdityaKrSingh26/Glime.git
+cd Glime
+go build -o glime ./cmd/glime
 
-# Build the binary
-make build
+# Open a file
+./glime main.go
 
-# Or install to system
-make install
-```
-
-### Usage
-
-```bash
-# Open Glime
-./bin/glime
-
-# Open a specific file
-./bin/glime filename.txt
+# Open the file explorer in the current directory
+./glime .
 
 # Show help
-./bin/glime --help
+./glime --help
 ```
+
+## Modes
+
+Glime has 5 modes. The current mode is shown in the status bar.
+
+| Mode | Indicator | How to enter |
+|------|-----------|--------------|
+| Normal | `NOR` | Default. Press `ESC` from any other mode |
+| Insert | `INS` | Press `i`, `a`, `A`, `o`, or `O` from Normal |
+| Command | `CMD` | Press `:` from Normal or Explorer |
+| Search | `SRCH` | Press `/` or `?` from Normal |
+| Explorer | `EXPL` | Run `:E` or launch Glime with a directory |
 
 ## Key Bindings
 
 ### Normal Mode
 
+#### Movement
+
 | Key | Action |
 |-----|--------|
-| `i` | Enter insert mode |
-| `:` | Enter command mode |
-| `h` `j` `k` `l` | Move cursor left/down/up/right |
-| `Arrow keys` | Move cursor |
-| `0` | Move to line start |
-| `$` | Move to line end |
+| `h` / `Arrow Left` | Move left |
+| `j` / `Arrow Down` | Move down |
+| `k` / `Arrow Up` | Move up |
+| `l` / `Arrow Right` | Move right |
+| `w` | Jump to next word |
+| `b` | Jump to previous word |
+| `0` / `Home` | Go to start of line |
+| `$` / `End` | Go to end of line |
 | `gg` | Go to first line |
 | `G` | Go to last line |
-| `x` | Delete character |
-| `dd` | Delete line |
+| `Page Up` | Scroll up one page |
+| `Page Down` | Scroll down one page |
+
+All movement keys accept a count prefix: `5j` moves down 5 lines, `3w` jumps 3 words.
+
+#### Entering Insert Mode
+
+| Key | Action |
+|-----|--------|
+| `i` | Insert before cursor |
+| `a` | Insert after cursor |
+| `A` | Insert at end of line |
+| `o` | Open new line below and insert |
+| `O` | Open new line above and insert |
+
+#### Delete
+
+| Key | Action |
+|-----|--------|
+| `x` | Delete character under cursor |
+| `dd` | Delete current line (yanks it too) |
+| `dw` | Delete from cursor to next word |
+| `d$` | Delete from cursor to end of line |
+
+Count prefix works: `3dd` deletes 3 lines, `2dw` deletes 2 words.
+
+#### Yank (Copy)
+
+| Key | Action |
+|-----|--------|
+| `yy` | Yank current line |
+| `yw` | Yank from cursor to next word |
+| `y$` | Yank from cursor to end of line |
+
+Count prefix works: `3yy` yanks 3 lines.
+
+#### Paste
+
+| Key | Action |
+|-----|--------|
+| `p` | Paste after cursor (lines below, chars after) |
+| `P` | Paste before cursor (lines above, chars before) |
+
+#### Undo / Redo
+
+| Key | Action |
+|-----|--------|
+| `u` | Undo last change |
+| `Ctrl+r` | Redo |
+
+#### Search
+
+| Key | Action |
+|-----|--------|
+| `/` | Start forward search (type pattern, press `Enter`) |
+| `?` | Start backward search |
+| `n` | Jump to next match (same direction) |
+| `N` | Jump to next match (opposite direction) |
+
+Matches are highlighted in yellow. Press `ESC` to cancel a search in progress.
+
+#### Other
+
+| Key | Action |
+|-----|--------|
+| `:` | Enter command mode |
+| `ESC` | Cancel pending operator |
+| `Ctrl+c` | Quit immediately |
 
 ### Insert Mode
 
 | Key | Action |
 |-----|--------|
-| `ESC` | Return to normal mode |
-| `Backspace` | Delete previous character |
-| `Enter` | New line |
-| Any character | Insert character |
+| Any character | Insert at cursor |
+| `Enter` | Split line / new line |
+| `Backspace` | Delete previous character (joins lines at column 0) |
+| `Delete` | Delete character under cursor |
+| `Arrow keys` | Move cursor |
+| `ESC` | Return to Normal mode |
 
 ### Command Mode
+
+Press `:` then type a command and hit `Enter`. Press `ESC` to cancel.
 
 | Command | Action |
 |---------|--------|
 | `:w` | Save file |
-| `:q` | Quit editor |
+| `:w filename` | Save as new filename |
+| `:q` | Quit (fails if unsaved changes) |
+| `:q!` | Force quit without saving |
 | `:wq` | Save and quit |
-| `:q!` | Quit without saving |
+| `:wq filename` | Save as and quit |
+| `:x` | Same as `:wq` |
+| `:{number}` | Jump to line number (e.g. `:42`) |
+| `:E` | Open file explorer in current file's directory |
+| `:E /path` | Open file explorer at given path |
+| `:Explore` | Same as `:E` |
+
+### File Explorer
+
+Triggered by `:E` or by opening a directory (`./glime .`). Directories are shown in blue with a `>` prefix, files in green.
+
+| Key | Action |
+|-----|--------|
+| `j` / `Arrow Down` | Move selection down |
+| `k` / `Arrow Up` | Move selection up |
+| `Enter` / `l` | Open file or enter directory |
+| `h` / `-` | Go to parent directory |
+| `g` | Jump to first entry |
+| `G` | Jump to last entry |
+| `q` / `ESC` | Quit explorer, restore previous buffer |
+| `:` | Enter command mode (returns to explorer after) |
+
+If your previous buffer has unsaved changes, opening a file from the explorer will be blocked with a warning.
 
 ## Project Structure
 
 ```
 glime/
-├── cmd/glime/          # Main entry point
-├── internal/           # Internal packages
-│   ├── buffer/        # Text buffer implementation
-│   ├── cursor/        # Cursor management
-│   ├── editor/        # Main editor logic
-│   ├── input/         # Keyboard input handling
-│   ├── terminal/      # Terminal control
-│   ├── ui/            # UI rendering
-│   └── file/          # File I/O
-├── pkg/               # Public packages
-├── docs/              # Documentation
-└── examples/          # Example files
+├── cmd/glime/          # Entry point
+├── internal/
+│   ├── buffer/         # Text buffer and file I/O
+│   ├── cursor/         # Cursor position and scrolling
+│   ├── editor/         # Editor state machine, commands, modes, explorer
+│   ├── syntax/         # Syntax highlighting and language detection
+│   ├── terminal/       # Raw terminal control and key reading
+│   └── ui/             # Rendering, status bar, themes
+└── pkg/
+    └── ansi/           # ANSI escape code helpers
 ```
 
-## Development
+## Building from Source
 
-### Prerequisites
-
-- Go 1.21 or higher
-- Make (optional, for build automation)
-
-### Building from Source
+Requires Go 1.24 or higher.
 
 ```bash
-# Install dependencies
-make deps
+# Build
+go build -o glime ./cmd/glime
 
 # Run tests
-make test
-
-# Run with coverage
-make coverage
-
-# Run linter
-make lint
-
-# Format code
-make fmt
-
-# Run all checks
-make pre-commit
-```
-
-### Running Tests
-
-```bash
-# Run all tests
 go test ./...
 
-# Run with coverage
-go test -cover ./...
-
-# Run benchmarks
-go test -bench=. ./...
+# Vet
+go vet ./...
 ```
 
 ## Architecture
 
-Glime follows clean architecture principles with clear separation of concerns:
+Glime follows clean architecture with clear separation of concerns:
 
-- **Terminal Layer**: Low-level terminal operations (raw mode, ANSI codes)
-- **Buffer Layer**: Text storage and manipulation
-- **Editor Layer**: State machine and command orchestration
-- **UI Layer**: Rendering and display logic
+- **Terminal Layer** - Raw mode, ANSI escape codes, key reading, screen management
+- **Buffer Layer** - Line-based text storage, file load/save with backup
+- **Cursor Layer** - Position tracking, viewport scrolling, movement commands
+- **Editor Layer** - Modal state machine, undo/redo, commands, search, file explorer
+- **Syntax Layer** - Regex-based tokenization, language detection, ANSI colorization
+- **UI Layer** - Screen rendering, status bar, line numbers, theme system

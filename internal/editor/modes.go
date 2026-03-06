@@ -7,23 +7,8 @@ const (
 	ModeInsert              // mode for inserting text
 	ModeCommand             // mode for entering commands (eg :w , :q)
 	ModeSearch              // mode for incremental search (ed /, ?)
+	ModeExplore             // mode for file explorer (netrw-style)
 )
-
-// returns the string representation of modes
-func (m Mode) String() string {
-	switch m {
-	case ModeNormal:
-		return "NORMAL"
-	case ModeInsert:
-		return "INSERT"
-	case ModeCommand:
-		return "COMMAND"
-	case ModeSearch:
-		return "SEARCH"
-	default:
-		return "UNKNOWN"
-	}
-}
 
 // represent a short string representation for the status bar
 func (m Mode) ShortString() string {
@@ -36,6 +21,8 @@ func (m Mode) ShortString() string {
 		return "CMD"
 	case ModeSearch:
 		return "SRCH"
+	case ModeExplore:
+		return "EXPL"
 	default:
 		return "???"
 	}

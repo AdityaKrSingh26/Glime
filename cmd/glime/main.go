@@ -32,12 +32,20 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Load file if specified
+	// Load file or directory if specified
 	if len(args) > 0 {
-		filePath := args[0]
-		if err := ed.LoadFile(filePath); err != nil {
-			fmt.Fprintf(os.Stderr, "Error loading file: %v\n", err)
-			os.Exit(1)
+		path := args[0]
+		info, err := os.Stat(path)
+		if err == nil && info.IsDir() {
+			if err := ed.OpenExplorer(path); err != nil {
+				fmt.Fprintf(os.Stderr, "Error opening directory: %v\n", err)
+				os.Exit(1)
+			}
+		} else {
+			if err := ed.LoadFile(path); err != nil {
+				fmt.Fprintf(os.Stderr, "Error loading file: %v\n", err)
+				os.Exit(1)
+			}
 		}
 	}
 
@@ -52,7 +60,7 @@ func printHelp() {
 	help := `Glime - A terminal-based modal text editor
 
 Usage:
-  glime [options] [file]
+  glime [options] [file|directory]
 
 Options:
   -h, --help      Show this help message
@@ -62,6 +70,8 @@ Examples:
   glime                 Open with empty buffer
   glime file.txt        Open or create file.txt
   glime /path/to/file   Open file at path
+  glime .               Open file explorer in current directory
+  glime /path/to/dir    Open file explorer at directory
 
 Key Bindings:
   Normal Mode:

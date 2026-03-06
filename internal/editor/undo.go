@@ -100,16 +100,6 @@ func (u *UndoManager) Redo() *ActionGroup {
 	return &group
 }
 
-// check if there are actions to undo.
-func (u *UndoManager) CanUndo() bool {
-	return len(u.undoStack) > 0 || (u.current != nil && len(u.current.Actions) > 0)
-}
-
-// check if there are actions to redo.
-func (u *UndoManager) CanRedo() bool {
-	return len(u.redoStack) > 0
-}
-
 // Store a mutation in history so it can be undone later.
 // this adds an action to the current group.
 // If no group is active, wraps the action in its own group.

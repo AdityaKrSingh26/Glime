@@ -10,10 +10,10 @@ import (
 	"github.com/AdityaKrSingh26/Glime/pkg/ansi"
 )
 
-// ansiEscape matches any ANSI escape sequence.
+// matches any ANSI escape sequence.
 var ansiEscape = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 
-// visibleLen returns the number of visible (non-ANSI) characters in s.
+// returns the number of visible (non-ANSI) characters in s.
 func visibleLen(s string) int {
 	return len(ansiEscape.ReplaceAllString(s, ""))
 }
@@ -32,7 +32,6 @@ func EnhancedStatusBar(
 
 	var result strings.Builder
 
-	// Mode segment
 	icon := getModeIcon(mode)
 	modeText := fmt.Sprintf(" %s %s ", icon, strings.ToUpper(mode))
 	result.WriteString(ansi.SetBgColor(theme.StatusModeBg))
@@ -41,20 +40,20 @@ func EnhancedStatusBar(
 	result.WriteString(modeText)
 	result.WriteString(ansi.ResetFormat)
 
-	// File segment
+	// file segment
 	fileText := formatFileSegment(fileName, modified)
 	result.WriteString(ansi.SetBgColor(theme.StatusFileBg))
 	result.WriteString(ansi.SetFgColor(theme.StatusFg))
 	result.WriteString(fileText)
 	result.WriteString(ansi.ResetFormat)
 
-	// Position segment (rendered at the right end)
+	// position segment (rendered at the right end)
 	posText := fmt.Sprintf(" %d,%d  %d%% ", row, col, percentage)
 
-	// Calculate used visible width so far (strip ANSI codes before measuring)
+	// calculate used visible width so far (strip ANSI codes before measuring)
 	usedWidth := visibleLen(modeText) + visibleLen(fileText)
 
-	// Language segment if there's space
+	// language segment if there's space
 	lang := syntax.LanguageName(fileName)
 	langText := ""
 	if lang != "" && usedWidth+len(lang)+3 < width-len(posText)-5 {
@@ -66,7 +65,7 @@ func EnhancedStatusBar(
 		usedWidth += len(langText)
 	}
 
-	// Padding between segments and position
+	// padding between segments and position
 	padding := width - usedWidth - len(posText)
 	if padding > 0 {
 		result.WriteString(ansi.SetBgColor(theme.StatusFileBg))
@@ -74,7 +73,7 @@ func EnhancedStatusBar(
 		result.WriteString(ansi.ResetFormat)
 	}
 
-	// Position segment
+	// position segment
 	result.WriteString(ansi.SetBgColor(theme.StatusPosBg))
 	result.WriteString(ansi.SetFgColor(theme.StatusFg))
 	result.WriteString(posText)
@@ -94,6 +93,8 @@ func getModeIcon(mode string) string {
 		return ":"
 	case "search", "srch":
 		return "/"
+	case "explore", "expl":
+		return "E"
 	default:
 		return "◆"
 	}

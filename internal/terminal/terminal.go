@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/AdityaKrSingh26/Glime/pkg/ansi"
@@ -18,6 +19,8 @@ type Terminal struct {
 	height         int
 	original_state *term.State
 	fd             int // file description
+	builder        strings.Builder
+	input          *inputReader
 }
 
 // create new terminal instance
@@ -38,6 +41,7 @@ func New() (*Terminal, error) {
 		width:  width,
 		height: height,
 		fd:     fd,
+		input:  newInputReader(os.Stdin),
 	}, nil
 }
 
@@ -105,4 +109,48 @@ func (t *Terminal) WatchResize() {
 			_ = t.UpdateSize()
 		}
 	}()
+}
+
+// --- Screen buffer methods (build frame in memory, then flush) ---
+
+// appends a string to the in-memory screen buffer.
+func (t *Terminal) WriteStr(s string) {
+	t.builder.WriteString(s)
+}
+
+// resets the in-memory screen buffer.
+func (t *Terminal) ClearBuffer() {
+	t.builder.Reset()
+}
+
+// returns the accumulated screen buffer contents.
+func (t *Terminal) BufferString() string {
+	return t.builder.String()
+}
+
+// writes hide-cursor and move-home to the buffer (start of frame).
+func (t *Terminal) PrepareScreen() {
+	t.WriteStr(ansi.HideCursor)
+	t.WriteStr(ansi.MoveCursorHome)
+}
+
+// writes cursor-position and show-cursor to the buffer (end of frame).
+func (t *Terminal) FinalizeScreen(row, col int) {
+	t.WriteStr(ansi.MoveCursorTo(row, col))
+	t.WriteStr(ansi.ShowCursor)
+}
+
+// writes a cursor-movement escape to the buffer.
+func (t *Terminal) MoveCursorTo(row, col int) {
+	t.WriteStr(ansi.MoveCursorTo(row, col))
+}
+
+// writes a clear-to-end-of-line escape to the buffer.
+func (t *Terminal) ClearToLineEnd() {
+	t.WriteStr(ansi.ClearToLineEnd)
+}
+
+// writes a format-reset escape to the buffer.
+func (t *Terminal) ResetFormat() {
+	t.WriteStr(ansi.ResetFormat)
 }

@@ -13,7 +13,6 @@ import (
 // responsible for rendering the editor UI to the terminal.
 type Renderer struct {
 	terminal    *terminal.Terminal
-	buffer      *terminal.ScreenBuffer
 	theme       Theme
 	highlighter *syntax.Highlighter
 }
@@ -21,7 +20,6 @@ type Renderer struct {
 func NewRenderer(term *terminal.Terminal) *Renderer {
 	return &Renderer{
 		terminal: term,
-		buffer:   terminal.NewScreenBuffer(),
 		theme:    DefaultTheme(),
 	}
 }
@@ -52,15 +50,35 @@ type MatchRange struct {
 	ColEnd   int
 }
 
+// represents a single entry in the explorer listing.
+type ExplorerViewEntry struct {
+	DisplayName string
+	IsDir       bool
+	Size        int64
+}
+
+// holds the data needed to render the file explorer.
+type ExplorerView struct {
+	Dir       string
+	Entries   []ExplorerViewEntry
+	CursorRow int
+	RowOffset int
+}
+
 // provides the data needed to render the editor.
 type EditorView struct {
-	Buffer     BufferView
-	Cursor     CursorView
-	Mode       ModeView
+	Lines      []string
+	FileName   string
+	IsModified bool
+	CursorRow  int
+	CursorCol  int
+	RowOffset  int
+	ColOffset  int
+	ModeName   string
 	Message    string
 	TermWidth  int
 	TermHeight int
-	TotalLines int // total lines in buffer for gutter width calculation
+	TotalLines int
 
 	// Search highlighting
 	SearchMatches map[int][]MatchRange // row -> list of match ranges
@@ -68,6 +86,10 @@ type EditorView struct {
 
 	// Bracket matching
 	BracketMatch *BracketMatchView // nil if no match
+
+	// Explorer mode
+	IsExplorer bool
+	Explorer   ExplorerView
 }
 
 // holds the position of a matching bracket for rendering.
@@ -76,46 +98,37 @@ type BracketMatchView struct {
 	Col int
 }
 
-// provides buffer data for rendering.
-type BufferView struct {
-	Lines      []string
-	FileName   string
-	IsModified bool
-}
-
-// provides cursor position data for rendering.
-type CursorView struct {
-	Row       int
-	Col       int
-	RowOffset int
-	ColOffset int
-}
-
-// provides mode information for rendering.
-type ModeView struct {
-	Name string
-}
-
 // renders the entire editor screen using the provided view data.
 func (r *Renderer) Render(view EditorView) error {
 
-	r.buffer.Clear()
-	r.buffer.PrepareScreen()
-	r.renderBuffer(view)
+	r.terminal.ClearBuffer()
+	r.terminal.PrepareScreen()
+
+	var screenRow, screenCol int
+
+	if view.IsExplorer {
+		r.renderExplorer(view)
+		// Explorer cursor: 2 header rows + offset within visible entries
+		headerRows := 2
+		screenRow = view.Explorer.CursorRow - view.Explorer.RowOffset + headerRows + 1
+		screenCol = 1
+	} else {
+		r.renderBuffer(view)
+		// Calculate cursor screen position (1-indexed for terminal)
+		// consider the gutter width
+		gutterWidth := GutterWidth(view.TotalLines)
+		screenRow = (view.CursorRow - view.RowOffset) + 1
+		screenCol = (view.CursorCol - view.ColOffset) + 1 + gutterWidth
+	}
+
 	r.renderStatusBar(view)
 	r.renderMessageBar(view)
 
-	// Calculate cursor screen position (1-indexed for terminal)
-	// consider the gutter width
-	gutterWidth := GutterWidth(view.TotalLines)
-	screenRow := (view.Cursor.Row - view.Cursor.RowOffset) + 1
-	screenCol := (view.Cursor.Col - view.Cursor.ColOffset) + 1 + gutterWidth
-
 	// Finalize screen (position cursor, show cursor)
-	r.buffer.FinalizeScreen(screenRow, screenCol)
+	r.terminal.FinalizeScreen(screenRow, screenCol)
 
 	// Write entire buffer to terminal in one operation
-	return r.terminal.Write(r.buffer.String())
+	return r.terminal.Write(r.terminal.BufferString())
 }
 
 // calculates the width needed for line numbers based on total lines.
@@ -136,29 +149,105 @@ func GutterWidth(totalLines int) int {
 func (r *Renderer) renderLineNumber(lineNum, width int, isCurrent bool) {
 	// Set colors based on whether this is the current line
 	if isCurrent {
-		r.buffer.Write(ansi.SetFgColor(r.theme.CurrentLineNumber))
-		r.buffer.Write(ansi.Bold)
+		r.terminal.WriteStr(ansi.SetFgColor(r.theme.CurrentLineNumber))
+		r.terminal.WriteStr(ansi.Bold)
 	} else {
-		r.buffer.Write(ansi.SetFgColor(r.theme.LineNumber))
+		r.terminal.WriteStr(ansi.SetFgColor(r.theme.LineNumber))
 	}
 
 	// Format line number right-aligned with padding
 	lineStr := fmt.Sprintf("%*d ", width-1, lineNum)
-	r.buffer.Write(lineStr)
+	r.terminal.WriteStr(lineStr)
 
 	// Reset formatting
-	r.buffer.ResetFormat()
+	r.terminal.ResetFormat()
 }
 
 // renders an empty line indicator (tilde) with gutter.
 func (r *Renderer) renderEmptyLine(gutterWidth int) {
 	// Render empty gutter space
-	r.buffer.Write(strings.Repeat(" ", gutterWidth))
+	r.terminal.WriteStr(strings.Repeat(" ", gutterWidth))
 
 	// Render tilde
-	r.buffer.Write(ansi.SetFgColor(r.theme.EmptyLine))
-	r.buffer.Write("~")
-	r.buffer.ResetFormat()
+	r.terminal.WriteStr(ansi.SetFgColor(r.theme.EmptyLine))
+	r.terminal.WriteStr("~")
+	r.terminal.ResetFormat()
+}
+
+// renders the file explorer view (netrw-style).
+func (r *Renderer) renderExplorer(view EditorView) {
+	ev := view.Explorer
+	listingRows := view.TermHeight - 4 // 2 header + 1 status + 1 message
+
+	// Row 1: header
+	r.renderExplorerHeader(ev.Dir, view.TermWidth)
+
+	// Row 2: separator
+	r.terminal.MoveCursorTo(2, 1)
+	r.terminal.WriteStr(ansi.SetFgColor(r.theme.Border))
+	r.terminal.WriteStr(strings.Repeat("─", view.TermWidth))
+	r.terminal.ResetFormat()
+
+	// Rows 3+: entries
+	for y := 0; y < listingRows; y++ {
+		r.terminal.MoveCursorTo(y+3, 1)
+
+		idx := y + ev.RowOffset
+		if idx >= len(ev.Entries) {
+			r.renderEmptyLine(0)
+			continue
+		}
+
+		r.renderExplorerEntry(ev.Entries[idx], idx == ev.CursorRow, view.TermWidth)
+	}
+}
+
+func (r *Renderer) renderExplorerHeader(dir string, termWidth int) {
+	r.terminal.MoveCursorTo(1, 1)
+	r.terminal.WriteStr(ansi.SetFgColor(r.theme.Function))
+	r.terminal.WriteStr(ansi.Bold)
+	r.terminal.WriteStr(" netrw")
+	r.terminal.ResetFormat()
+	r.terminal.WriteStr("  ")
+
+	// truncate long paths from the left
+	if len(dir) > termWidth-10 {
+		dir = "..." + dir[len(dir)-termWidth+13:]
+	}
+	r.terminal.WriteStr(ansi.SetFgColor(r.theme.Comment))
+	r.terminal.WriteStr(dir)
+	r.terminal.ResetFormat()
+	r.terminal.ClearToLineEnd()
+}
+
+func (r *Renderer) renderExplorerEntry(entry ExplorerViewEntry, isSelected bool, termWidth int) {
+	// pick prefix and color based on dir vs file
+	prefix := "   "
+	color := r.theme.String
+	if entry.IsDir {
+		prefix = " > "
+		color = r.theme.Function
+	}
+
+	// selected entries get inverse highlight
+	if isSelected {
+		r.terminal.WriteStr(ansi.SetBgColor(r.theme.StatusModeBg))
+		r.terminal.WriteStr(ansi.SetFgColor(r.theme.StatusFg))
+	} else {
+		r.terminal.WriteStr(ansi.SetFgColor(color))
+	}
+	if entry.IsDir {
+		r.terminal.WriteStr(ansi.Bold)
+	}
+
+	line := prefix + entry.DisplayName
+	if len(line) > termWidth {
+		line = line[:termWidth]
+	}
+	r.terminal.WriteStr(line)
+
+	r.terminal.ResetFormat()
+	r.terminal.ClearToLineEnd()
 }
 
 // renders the visible portion of the text buffer with line numbers.
@@ -173,56 +262,59 @@ func (r *Renderer) renderBuffer(view EditorView) {
 	textWidth := view.TermWidth - gutterWidth
 
 	for y := 0; y < visibleRows; y++ {
-		fileRow := y + view.Cursor.RowOffset
+		fileRow := y + view.RowOffset
 
 		// Move cursor to this row
-		r.buffer.MoveCursor(y+1, 1)
+		r.terminal.MoveCursorTo(y+1, 1)
 
-		if fileRow >= len(view.Buffer.Lines) {
+		if fileRow >= len(view.Lines) {
 			// Past end of file - show empty gutter and tilde
 			r.renderEmptyLine(gutterWidth)
 		} else {
 			// Render line number in gutter
 			lineNum := fileRow + 1
-			isCurrent := fileRow == view.Cursor.Row
+			isCurrent := fileRow == view.CursorRow
 			r.renderLineNumber(lineNum, gutterWidth, isCurrent)
 
 			// Render line content with syntax highlighting and horizontal scrolling
-			line := view.Buffer.Lines[fileRow]
+			line := view.Lines[fileRow]
 
 			// Apply syntax highlighting to the full line, then extract visible portion
 			var displayLine string
 			if r.highlighter != nil {
 				highlighted := r.highlighter.Highlight(line)
-				displayLine = extractVisiblePortion(highlighted, view.Cursor.ColOffset, textWidth)
-			} else if view.Cursor.ColOffset < len(line) {
-				visibleEnd := view.Cursor.ColOffset + textWidth
-				if visibleEnd > len(line) {
-					visibleEnd = len(line)
+				displayLine = extractVisiblePortion(highlighted, view.ColOffset, textWidth)
+			} else {
+				runes := []rune(line)
+				if view.ColOffset < len(runes) {
+					visibleEnd := view.ColOffset + textWidth
+					if visibleEnd > len(runes) {
+						visibleEnd = len(runes)
+					}
+					displayLine = string(runes[view.ColOffset:visibleEnd])
 				}
-				displayLine = line[view.Cursor.ColOffset:visibleEnd]
 			}
 
 			// Apply search highlighting on top
 			if view.SearchActive {
 				if matches, ok := view.SearchMatches[fileRow]; ok && len(matches) > 0 {
-					displayLine = r.applySearchHighlight(displayLine, matches, view.Cursor.ColOffset, textWidth)
+					displayLine = r.applySearchHighlight(displayLine, matches, view.ColOffset, textWidth)
 				}
 			}
 
 			// Apply bracket match highlighting
 			if view.BracketMatch != nil && view.BracketMatch.Row == fileRow {
-				matchCol := view.BracketMatch.Col - view.Cursor.ColOffset
+				matchCol := view.BracketMatch.Col - view.ColOffset
 				if matchCol >= 0 && matchCol < textWidth {
 					displayLine = r.applyBracketHighlight(displayLine, matchCol)
 				}
 			}
 
-			r.buffer.Write(displayLine)
+			r.terminal.WriteStr(displayLine)
 		}
 
 		// Clear to end of line (in case line got shorter)
-		r.buffer.ClearToLineEnd()
+		r.terminal.ClearToLineEnd()
 	}
 }
 
@@ -399,35 +491,35 @@ func extractVisiblePortion(highlighted string, colOffset, width int) string {
 func (r *Renderer) renderStatusBar(view EditorView) {
 	// Position at status bar row
 	statusRow := view.TermHeight - 1
-	r.buffer.MoveCursor(statusRow, 1)
+	r.terminal.MoveCursorTo(statusRow, 1)
 
 	// Calculate percentage
-	percentage := calculatePercentage(view.Cursor.Row, len(view.Buffer.Lines))
+	percentage := calculatePercentage(view.CursorRow, len(view.Lines))
 
 	// Create enhanced status bar
 	statusLine := EnhancedStatusBar(
 		r.theme,
-		view.Mode.Name,
-		view.Buffer.FileName,
-		view.Buffer.IsModified,
-		view.Cursor.Row+1,
-		view.Cursor.Col+1,
+		view.ModeName,
+		view.FileName,
+		view.IsModified,
+		view.CursorRow+1,
+		view.CursorCol+1,
 		percentage,
 		view.TermWidth,
 	)
 
 	// Write status bar
-	r.buffer.Write(statusLine)
+	r.terminal.WriteStr(statusLine)
 
 	// Clear to end of line (in case terminal is wider)
-	r.buffer.ClearToLineEnd()
+	r.terminal.ClearToLineEnd()
 }
 
 // renders the message/command bar at the very bottom.
 func (r *Renderer) renderMessageBar(view EditorView) {
 	// Position at message bar row
 	messageRow := view.TermHeight
-	r.buffer.MoveCursor(messageRow, 1)
+	r.terminal.MoveCursorTo(messageRow, 1)
 
 	message := view.Message
 
@@ -436,8 +528,8 @@ func (r *Renderer) renderMessageBar(view EditorView) {
 		message = message[:view.TermWidth]
 	}
 
-	r.buffer.Write(message)
-	r.buffer.ClearToLineEnd()
+	r.terminal.WriteStr(message)
+	r.terminal.ClearToLineEnd()
 }
 
 // calculates the percentage through the file.

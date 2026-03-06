@@ -4,15 +4,11 @@ package editor
 
 import (
 	"fmt"
-	"os"
 	"strings"
-	"time"
 	"unicode/utf8"
 
 	"github.com/AdityaKrSingh26/Glime/internal/buffer"
 	"github.com/AdityaKrSingh26/Glime/internal/cursor"
-	"github.com/AdityaKrSingh26/Glime/internal/file"
-	"github.com/AdityaKrSingh26/Glime/internal/input"
 	"github.com/AdityaKrSingh26/Glime/internal/terminal"
 	"github.com/AdityaKrSingh26/Glime/internal/ui"
 )
@@ -24,10 +20,10 @@ type Editor struct {
 	cursor   *cursor.Cursor
 	renderer *ui.Renderer
 
-	mode        Mode
-	message     string
-	messageTime time.Time
-	commandBuf  string // Buffer for command mode input
+	mode       Mode
+	prevMode   Mode   // Mode before entering command mode
+	message    string
+	commandBuf string // Buffer for command mode input
 	shouldQuit  bool
 
 	undoMgr   *UndoManager   // Undo/Redo
@@ -35,6 +31,7 @@ type Editor struct {
 	register  Register       // Copy/Paste
 	search    SearchState    // Search
 	searchBuf string         // Input buffer for search mode
+	explorer  ExplorerState  // File explorer
 }
 
 func New() (*Editor, error) {
@@ -60,9 +57,14 @@ func New() (*Editor, error) {
 	}, nil
 }
 
+// opens the file explorer at the given directory.
+func (e *Editor) OpenExplorer(dir string) error {
+	return e.commandExplore(dir)
+}
+
 // load file into editor
 func (e *Editor) LoadFile(filePath string) error {
-	if !file.Exists(filePath) {
+	if !buffer.Exists(filePath) {
 		// file does not exist create a buffer with this path
 		e.buffer.SetFilePath(filePath)
 		e.renderer.SetLanguage(filePath)
@@ -70,7 +72,7 @@ func (e *Editor) LoadFile(filePath string) error {
 		return nil
 	}
 
-	lines, err := file.Load(filePath)
+	lines, err := buffer.Load(filePath)
 	if err != nil {
 		return fmt.Errorf("Error loading file into editor: %w", err)
 	}
@@ -120,7 +122,7 @@ func (e *Editor) Run() error {
 		}
 
 		// read key input
-		key, err := input.ReadKey(os.Stdin)
+		key, err := e.terminal.ReadKey()
 		if err != nil {
 			return fmt.Errorf("failed to read key: %w", err)
 		}
@@ -135,7 +137,7 @@ func (e *Editor) Run() error {
 }
 
 // to handle a key press based on the current mode.
-func (e *Editor) processKey(key *input.Key) error {
+func (e *Editor) processKey(key *terminal.Key) error {
 	switch e.mode {
 	case ModeNormal:
 		return e.processNormalMode(key)
@@ -145,50 +147,52 @@ func (e *Editor) processKey(key *input.Key) error {
 		return e.processCommandMode(key)
 	case ModeSearch:
 		return e.processSearchMode(key)
+	case ModeExplore:
+		return e.processExploreMode(key)
 	}
 	return nil
 }
 
 // handles keys in Normal mode with multi-key support.
-func (e *Editor) processNormalMode(key *input.Key) error {
+func (e *Editor) processNormalMode(key *terminal.Key) error {
 	// Step 1: Handle non-rune keys first (arrows, page, ctrl, escape)
 	switch key.Type {
-	case input.KeyArrowLeft:
+	case terminal.KeyArrowLeft:
 		e.pending.Reset()
 		e.cursor.MoveLeft(e.buffer)
 		return nil
-	case input.KeyArrowRight:
+	case terminal.KeyArrowRight:
 		e.pending.Reset()
 		e.cursor.MoveRight(e.buffer)
 		return nil
-	case input.KeyArrowUp:
+	case terminal.KeyArrowUp:
 		e.pending.Reset()
 		e.cursor.MoveUp(e.buffer)
 		return nil
-	case input.KeyArrowDown:
+	case terminal.KeyArrowDown:
 		e.pending.Reset()
 		e.cursor.MoveDown(e.buffer)
 		return nil
-	case input.KeyPageUp:
+	case terminal.KeyPageUp:
 		e.pending.Reset()
 		e.cursor.PageUp(e.buffer, e.terminal.Height()-2)
 		return nil
-	case input.KeyPageDown:
+	case terminal.KeyPageDown:
 		e.pending.Reset()
 		e.cursor.PageDown(e.buffer, e.terminal.Height()-2)
 		return nil
-	case input.KeyHome:
+	case terminal.KeyHome:
 		e.pending.Reset()
 		e.cursor.MoveToLineStart()
 		return nil
-	case input.KeyEnd:
+	case terminal.KeyEnd:
 		e.pending.Reset()
 		e.cursor.MoveToLineEndNormal(e.buffer)
 		return nil
-	case input.KeyEscape:
+	case terminal.KeyEscape:
 		e.pending.Reset()
 		return nil
-	case input.KeyCtrl:
+	case terminal.KeyCtrl:
 		e.pending.Reset()
 		switch key.Rune {
 		case 'c':
@@ -199,7 +203,7 @@ func (e *Editor) processNormalMode(key *input.Key) error {
 		return nil
 	}
 
-	if key.Type != input.KeyRune {
+	if key.Type != terminal.KeyRune {
 		return nil
 	}
 
@@ -276,7 +280,42 @@ func (e *Editor) executeNormalCommand(ch rune) error {
 	case 'i':
 		e.setMode(ModeInsert)
 		e.undoMgr.BeginGroup()
+	case 'a':
+		e.cursor.MoveRight(e.buffer)
+		e.setMode(ModeInsert)
+		e.undoMgr.BeginGroup()
+	case 'A':
+		e.cursor.MoveToLineEnd(e.buffer)
+		e.setMode(ModeInsert)
+		e.undoMgr.BeginGroup()
+	case 'o':
+		e.undoMgr.BeginGroup()
+		row := e.cursor.Row()
+		e.undoMgr.Record(Action{
+			Type:      ActionInsertLine,
+			Row:       row + 1,
+			Text:      "",
+			CursorRow: row,
+			CursorCol: e.cursor.Col(),
+		})
+		e.buffer.InsertLine(row + 1)
+		e.cursor.MoveTo(row+1, 0, e.buffer)
+		e.setMode(ModeInsert)
+	case 'O':
+		e.undoMgr.BeginGroup()
+		row := e.cursor.Row()
+		e.undoMgr.Record(Action{
+			Type:      ActionInsertLine,
+			Row:       row,
+			Text:      "",
+			CursorRow: row,
+			CursorCol: e.cursor.Col(),
+		})
+		e.buffer.InsertLine(row)
+		e.cursor.MoveTo(row, 0, e.buffer)
+		e.setMode(ModeInsert)
 	case ':':
+		e.prevMode = e.mode
 		e.setMode(ModeCommand)
 		e.commandBuf = ":"
 	case '/':
@@ -333,73 +372,73 @@ func (e *Editor) executeNormalCommand(ch rune) error {
 }
 
 // handles keys in Insert mode.
-func (e *Editor) processInsertMode(key *input.Key) error {
+func (e *Editor) processInsertMode(key *terminal.Key) error {
 	switch key.Type {
-	case input.KeyEscape:
+	case terminal.KeyEscape:
 		e.undoMgr.EndGroup()
 		e.setMode(ModeNormal)
 
-	case input.KeyRune:
+	case terminal.KeyRune:
 		e.insertChar(e.cursor.Row(), e.cursor.Col(), key.Rune)
 		e.cursor.MoveRight(e.buffer)
 
-	case input.KeyEnter:
+	case terminal.KeyEnter:
 		e.splitLine(e.cursor.Row(), e.cursor.Col())
 		e.cursor.MoveDown(e.buffer)
 		e.cursor.MoveToLineStart()
 
-	case input.KeyBackspace:
+	case terminal.KeyBackspace:
 		e.backspace(e.cursor.Row(), e.cursor.Col())
 
-	case input.KeyDelete:
+	case terminal.KeyDelete:
 		e.deleteCharAt(e.cursor.Row(), e.cursor.Col())
 
-	case input.KeyArrowLeft:
+	case terminal.KeyArrowLeft:
 		e.cursor.MoveLeft(e.buffer)
-	case input.KeyArrowRight:
+	case terminal.KeyArrowRight:
 		e.cursor.MoveRight(e.buffer)
-	case input.KeyArrowUp:
+	case terminal.KeyArrowUp:
 		e.cursor.MoveUp(e.buffer)
-	case input.KeyArrowDown:
+	case terminal.KeyArrowDown:
 		e.cursor.MoveDown(e.buffer)
 	}
 
 	return nil
 }
 
-func (e *Editor) processCommandMode(key *input.Key) error {
+func (e *Editor) processCommandMode(key *terminal.Key) error {
 	switch key.Type {
-	case input.KeyEscape:
-		e.setMode(ModeNormal)
+	case terminal.KeyEscape:
+		e.setMode(e.prevMode)
 		e.commandBuf = ""
 
-	case input.KeyEnter:
+	case terminal.KeyEnter:
 		// Execute the command
 		if err := e.executeCommand(e.commandBuf); err != nil {
 			e.setMessage(fmt.Sprintf("Error: %v", err))
 		}
 
-		// Don't clear message if we're quitting
-		if !e.shouldQuit {
-			e.setMode(ModeNormal)
+		// Return to previous mode only if the command didn't change mode itself
+		if !e.shouldQuit && e.mode == ModeCommand {
+			e.setMode(e.prevMode)
 		}
 		e.commandBuf = ""
 
-	case input.KeyBackspace:
+	case terminal.KeyBackspace:
 		if len(e.commandBuf) > 1 { // Keep the ':'
 			e.commandBuf = e.commandBuf[:len(e.commandBuf)-1]
 		}
 
-	case input.KeyRune:
+	case terminal.KeyRune:
 		e.commandBuf += string(key.Rune)
 	}
 
 	return nil
 }
 
-func (e *Editor) processSearchMode(key *input.Key) error {
+func (e *Editor) processSearchMode(key *terminal.Key) error {
 	switch key.Type {
-	case input.KeyEscape:
+	case terminal.KeyEscape:
 		// Cancel search
 		e.search.Active = false
 		e.search.Pattern = ""
@@ -407,7 +446,7 @@ func (e *Editor) processSearchMode(key *input.Key) error {
 		e.searchBuf = ""
 		e.setMode(ModeNormal)
 
-	case input.KeyEnter:
+	case terminal.KeyEnter:
 		// Finalize search and jump to nearest match
 		e.search.Pattern = e.searchBuf
 		e.search.FindAll(e.buffer.GetLines())
@@ -426,7 +465,7 @@ func (e *Editor) processSearchMode(key *input.Key) error {
 		e.searchBuf = ""
 		e.setMode(ModeNormal)
 
-	case input.KeyBackspace:
+	case terminal.KeyBackspace:
 		if len(e.searchBuf) > 0 {
 			e.searchBuf = e.searchBuf[:len(e.searchBuf)-1]
 			// Re-run incremental search
@@ -434,7 +473,7 @@ func (e *Editor) processSearchMode(key *input.Key) error {
 			e.search.FindAll(e.buffer.GetLines())
 		}
 
-	case input.KeyRune:
+	case terminal.KeyRune:
 		e.searchBuf += string(key.Rune)
 		// Incremental search
 		e.search.Pattern = e.searchBuf
@@ -520,10 +559,14 @@ func (e *Editor) insertChar(row, col int, ch rune) {
 // records and executes a character deletion.
 func (e *Editor) deleteCharAt(row, col int) {
 	line, err := e.buffer.GetLine(row)
-	if err != nil || col >= len(line) {
+	if err != nil {
 		return
 	}
-	ch := string(line[col])
+	runes := []rune(line)
+	if col >= len(runes) {
+		return
+	}
+	ch := string(runes[col])
 
 	e.undoMgr.Record(Action{
 		Type:      ActionDeleteChar,
@@ -539,10 +582,14 @@ func (e *Editor) deleteCharAt(row, col int) {
 // deletes the char under cursor and yanks it.
 func (e *Editor) deleteCharUnderCursor() {
 	line, err := e.buffer.GetLine(e.cursor.Row())
-	if err != nil || e.cursor.Col() >= len(line) {
+	if err != nil {
 		return
 	}
-	ch := string(line[e.cursor.Col()])
+	runes := []rune(line)
+	if e.cursor.Col() >= len(runes) {
+		return
+	}
+	ch := string(runes[e.cursor.Col()])
 	e.register = Register{Content: ch, Type: RegisterChar}
 	e.deleteCharAt(e.cursor.Row(), e.cursor.Col())
 }
@@ -586,10 +633,11 @@ func (e *Editor) backspace(row, col int) {
 		e.cursor.SetPosition(row-1, prevLen)
 	} else {
 		line, _ := e.buffer.GetLine(row)
-		if col > len(line) {
-			col = len(line)
+		runes := []rune(line)
+		if col > len(runes) {
+			col = len(runes)
 		}
-		ch := string(line[col-1])
+		ch := string(runes[col-1])
 		e.undoMgr.Record(Action{
 			Type:      ActionDeleteChar,
 			Row:       row,
@@ -644,19 +692,22 @@ func (e *Editor) yankWord(count int) error {
 
 	if endRow == row {
 		line, _ := e.buffer.GetLine(row)
-		if endCol > len(line) {
-			endCol = len(line)
+		runes := []rune(line)
+		if endCol > len(runes) {
+			endCol = len(runes)
 		}
-		e.register = Register{Content: line[col:endCol], Type: RegisterChar}
+		e.register = Register{Content: string(runes[col:endCol]), Type: RegisterChar}
 	} else {
 		lines := e.buffer.GetLines()
 		var yanked string
-		yanked = lines[row][col:]
+		startRunes := []rune(lines[row])
+		yanked = string(startRunes[col:])
 		for r := row + 1; r < endRow && r < len(lines); r++ {
 			yanked += "\n" + lines[r]
 		}
 		if endRow < len(lines) {
-			yanked += "\n" + lines[endRow][:endCol]
+			endRunes := []rune(lines[endRow])
+			yanked += "\n" + string(endRunes[:endCol])
 		}
 		e.register = Register{Content: yanked, Type: RegisterChar}
 	}
@@ -667,9 +718,10 @@ func (e *Editor) yankWord(count int) error {
 // copies from cursor to end of line to the register.
 func (e *Editor) yankToLineEnd() error {
 	line, _ := e.buffer.GetLine(e.cursor.Row())
+	runes := []rune(line)
 	col := e.cursor.Col()
-	if col < len(line) {
-		e.register = Register{Content: line[col:], Type: RegisterChar}
+	if col < len(runes) {
+		e.register = Register{Content: string(runes[col:]), Type: RegisterChar}
 	}
 	e.setMessage("yanked")
 	return nil
@@ -717,16 +769,17 @@ func (e *Editor) paste(afterCursor bool) {
 		}
 		e.cursor.MoveTo(insertRow, 0, e.buffer)
 	} else {
-		// Character paste: insert at or after cursor column
+		// Character paste: insert at or after cursor column (rune-indexed)
 		line, _ := e.buffer.GetLine(row)
+		runes := []rune(line)
 		insertCol := col
 		if afterCursor {
 			insertCol = col + 1
-			if insertCol > len(line) {
-				insertCol = len(line)
+			if insertCol > len(runes) {
+				insertCol = len(runes)
 			}
 		}
-		newLine := line[:insertCol] + e.register.Content + line[insertCol:]
+		newLine := string(runes[:insertCol]) + e.register.Content + string(runes[insertCol:])
 		e.undoMgr.Record(Action{
 			Type:      ActionSetLine,
 			Row:       row,
@@ -793,7 +846,7 @@ func (e *Editor) applyInverse(a Action) {
 	case ActionInsertChar:
 		e.buffer.DeleteChar(a.Row, a.Col)
 	case ActionDeleteChar:
-		e.buffer.InsertChar(a.Row, a.Col, rune(a.Text[0]))
+		e.buffer.InsertChar(a.Row, a.Col, []rune(a.Text)[0])
 	case ActionSplitLine:
 		// Reverse split: join the two lines back
 		e.buffer.SetLine(a.Row, a.PrevText)
@@ -817,7 +870,7 @@ func (e *Editor) applyInverse(a Action) {
 func (e *Editor) applyForward(a Action) {
 	switch a.Type {
 	case ActionInsertChar:
-		e.buffer.InsertChar(a.Row, a.Col, rune(a.Text[0]))
+		e.buffer.InsertChar(a.Row, a.Col, []rune(a.Text)[0])
 	case ActionDeleteChar:
 		e.buffer.DeleteChar(a.Row, a.Col)
 	case ActionSplitLine:
@@ -846,11 +899,17 @@ func (e *Editor) setMode(mode Mode) {
 // sets the message to display in the message bar.
 func (e *Editor) setMessage(msg string) {
 	e.message = msg
-	e.messageTime = time.Now()
 }
 
 // updates the scroll offsets to keep the cursor visible.
 func (e *Editor) updateScroll() {
+	if e.mode == ModeExplore {
+		// 2 header rows + 1 status + 1 message = 4 reserved
+		listingRows := e.terminal.Height() - 4
+		e.explorer.UpdateScroll(listingRows)
+		return
+	}
+
 	// visible rows (total height - status bar - message bar)
 	visibleRows := e.terminal.Height() - 2
 
@@ -876,24 +935,38 @@ func (e *Editor) buildView() ui.EditorView {
 	}
 
 	view := ui.EditorView{
-		Buffer: ui.BufferView{
-			Lines:      e.buffer.GetLines(),
-			FileName:   e.buffer.FileName(),
-			IsModified: e.buffer.IsModified(),
-		},
-		Cursor: ui.CursorView{
-			Row:       e.cursor.Row(),
-			Col:       e.cursor.Col(),
-			RowOffset: e.cursor.RowOffset(),
-			ColOffset: e.cursor.ColOffset(),
-		},
-		Mode: ui.ModeView{
-			Name: e.mode.ShortString(),
-		},
+		Lines:      e.buffer.GetLines(),
+		FileName:   e.buffer.FileName(),
+		IsModified: e.buffer.IsModified(),
+		CursorRow:  e.cursor.Row(),
+		CursorCol:  e.cursor.Col(),
+		RowOffset:  e.cursor.RowOffset(),
+		ColOffset:  e.cursor.ColOffset(),
+		ModeName:   e.mode.ShortString(),
 		Message:    msg,
 		TermWidth:  e.terminal.Width(),
 		TermHeight: e.terminal.Height(),
 		TotalLines: e.buffer.NumLines(),
+	}
+
+	// Explorer mode
+	if e.mode == ModeExplore {
+		view.IsExplorer = true
+		entries := make([]ui.ExplorerViewEntry, len(e.explorer.Entries))
+		for i, ent := range e.explorer.Entries {
+			entries[i] = ui.ExplorerViewEntry{
+				DisplayName: ent.Name,
+				IsDir:       ent.IsDir,
+				Size:        ent.Size,
+			}
+		}
+		view.Explorer = ui.ExplorerView{
+			Dir:       e.explorer.Dir,
+			Entries:   entries,
+			CursorRow: e.explorer.CursorRow,
+			RowOffset: e.explorer.RowOffset,
+		}
+		return view
 	}
 
 	// Search highlighting

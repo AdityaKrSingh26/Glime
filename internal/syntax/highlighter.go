@@ -103,11 +103,18 @@ func (h *Highlighter) tokenizeLine(line string) []Token {
 	for _, rule := range h.lang.Rules {
 		matches := rule.Pattern.FindAllStringIndex(line, -1)
 		for _, match := range matches {
-			tokens = append(tokens, Token{
-				Type:  rule.TokenType,
-				Start: match[0],
-				End:   match[1],
-			})
+			end := match[1]
+			// For function tokens, exclude the trailing '(' from highlighting
+			if rule.TokenType == TokenFunction && end > match[0] && end <= len(line) && line[end-1] == '(' {
+				end--
+			}
+			if end > match[0] {
+				tokens = append(tokens, Token{
+					Type:  rule.TokenType,
+					Start: match[0],
+					End:   end,
+				})
+			}
 		}
 	}
 

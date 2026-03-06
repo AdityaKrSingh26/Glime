@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/AdityaKrSingh26/Glime/internal/file"
+	"github.com/AdityaKrSingh26/Glime/internal/buffer"
 )
 
 // execute command in command mode, command start with ":" and executed when enter is pressed
@@ -44,6 +44,12 @@ func (e *Editor) executeCommand(cmd string) error {
 		return e.commandWriteQuit()
 	case "x":
 		return e.commandWriteQuit() // Same as :wq
+	case "E", "Explore":
+		dir := ""
+		if len(parts) > 1 {
+			dir = parts[1]
+		}
+		return e.commandExplore(dir)
 	default:
 		// Check if it's a line number (e.g., :42)
 		if lineNum, err := strconv.Atoi(command); err == nil {
@@ -76,13 +82,13 @@ func (e *Editor) commandWrite() error {
 	}
 
 	// Back up existing file before overwriting
-	if err := file.Backup(filePath); err != nil {
+	if err := buffer.Backup(filePath); err != nil {
 		e.setMessage(fmt.Sprintf("Backup failed: %v", err))
 		return err
 	}
 
 	// Save the file
-	if err := file.Save(filePath, e.buffer.GetLines()); err != nil {
+	if err := buffer.Save(filePath, e.buffer.GetLines()); err != nil {
 		e.setMessage(fmt.Sprintf("Error writing file: %v", err))
 		return err
 	}

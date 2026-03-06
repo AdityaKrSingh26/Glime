@@ -3,31 +3,34 @@ package editor
 import "unicode"
 
 // finds the position after the next word boundary
-// return the (row, col) of the start of the next word
+// return the (row, col) of the start of the next word (rune-indexed)
 func (e *Editor) findWordEnd(row, col int) (int, int) {
 	lines := e.buffer.GetLines()
 	if row >= len(lines) {
 		return row, col
 	}
 
-	line := lines[row]
+	runes := []rune(lines[row])
 
-	// if at end of line, move to next line
-	if col >= len(line) {
+	// skip over empty lines at current position
+	for col >= len(runes) {
 		if row < len(lines)-1 {
-			return row + 1, 0
+			row++
+			col = 0
+			runes = []rune(lines[row])
+		} else {
+			return row, col
 		}
-		return row, col
 	}
 
 	// determine current character class
-	ch := rune(line[col])
+	ch := runes[col]
 	isWord := isWordChar(ch)
 	isPunct := !isWord && !unicode.IsSpace(ch)
 
 	// skip current word/punctuation
-	for col < len(line) {
-		c := rune(line[col])
+	for col < len(runes) {
+		c := runes[col]
 		if isWord && !isWordChar(c) {
 			break
 		}
@@ -40,19 +43,19 @@ func (e *Editor) findWordEnd(row, col int) (int, int) {
 		col++
 	}
 
-	for col < len(line) && unicode.IsSpace(rune(line[col])) {
+	for col < len(runes) && unicode.IsSpace(runes[col]) {
 		col++
 	}
 
 	// end of line, go to start of next line
-	if col >= len(line) && row < len(lines)-1 {
+	if col >= len(runes) && row < len(lines)-1 {
 		return row + 1, 0
 	}
 
 	return row, col
 }
 
-// finds the position of the previous word start
+// finds the position of the previous word start (rune-indexed)
 func (e *Editor) findWordStart(row, col int) (int, int) {
 	lines := e.buffer.GetLines()
 	if row >= len(lines) {
@@ -62,35 +65,34 @@ func (e *Editor) findWordStart(row, col int) (int, int) {
 	// if at start of line, move to end of previous line
 	if col == 0 {
 		if row > 0 {
-			prevLen := len(lines[row-1])
-			if prevLen == 0 {
+			prevRunes := []rune(lines[row-1])
+			if len(prevRunes) == 0 {
 				return row - 1, 0
 			}
-			return row - 1, prevLen - 1
+			return row - 1, len(prevRunes) - 1
 		}
 		return 0, 0
 	}
 
-	line := lines[row]
+	runes := []rune(lines[row])
 	col-- // move back one
 
 	// skip trailing whitespace to get to the previous word
-	for col > 0 && unicode.IsSpace(rune(line[col])) {
+	for col > 0 && unicode.IsSpace(runes[col]) {
 		col--
 	}
 
 	if col == 0 {
-		// col 0 may itself be the start of a word — let the caller handle it
 		return row, 0
 	}
 
 	// determine current character class
-	ch := rune(line[col])
+	ch := runes[col]
 	isWord := isWordChar(ch)
 
 	// skip same class backward
 	for col > 0 {
-		prev := rune(line[col-1])
+		prev := runes[col-1]
 		if isWord && !isWordChar(prev) {
 			break
 		}
@@ -156,7 +158,7 @@ func (e *Editor) deleteLines(count int) error {
 	return nil
 }
 
-// deleteWord deletes from cursor to next word boundary (count times).
+// deleteWord deletes from cursor to next word boundary (count times). Rune-indexed.
 func (e *Editor) deleteWord(count int) error {
 	row := e.cursor.Row()
 	col := e.cursor.Col()
@@ -169,50 +171,63 @@ func (e *Editor) deleteWord(count int) error {
 	if endRow == row {
 		// same line deletion
 		line, _ := e.buffer.GetLine(row)
-		if endCol > len(line) {
-			endCol = len(line)
+		runes := []rune(line)
+		if endCol > len(runes) {
+			endCol = len(runes)
 		}
-		deleted := line[col:endCol]
+		deleted := string(runes[col:endCol])
 		e.register = Register{
 			Content: deleted,
 			Type:    RegisterChar,
 		}
 
+		newLine := string(runes[:col]) + string(runes[endCol:])
 		e.undoMgr.Record(Action{
 			Type:      ActionSetLine,
 			Row:       row,
-			Text:      line[:col] + line[endCol:],
+			Text:      newLine,
 			PrevText:  line,
 			CursorRow: e.cursor.Row(),
 			CursorCol: e.cursor.Col(),
 		})
-		e.buffer.SetLine(row, line[:col]+line[endCol:])
+		e.buffer.SetLine(row, newLine)
 	} else {
-		// multi-line deletion: delete from col to end of current line,
-		// then delete intermediate lines, then delete start of target line
+		// multi-line deletion
 		e.undoMgr.BeginGroup()
 
 		lines := e.buffer.GetLines()
 		var deleted string
 
-		// capture text being deleted
+		// capture text being deleted (rune-safe)
 		firstLine := lines[row]
-		deleted = firstLine[col:]
+		firstRunes := []rune(firstLine)
+		deleted = string(firstRunes[col:])
 		for r := row + 1; r < endRow; r++ {
 			deleted += "\n" + lines[r]
 		}
 		if endRow < len(lines) {
-			deleted += "\n" + lines[endRow][:endCol]
+			endRunes := []rune(lines[endRow])
+			deleted += "\n" + string(endRunes[:endCol])
 		}
 		e.register = Register{Content: deleted, Type: RegisterChar}
 
 		// Merge: keep beginning of first line + end of last line
-		newLine := firstLine[:col]
+		newLine := string(firstRunes[:col])
 		if endRow < len(lines) {
-			newLine += lines[endRow][endCol:]
+			endRunes := []rune(lines[endRow])
+			newLine += string(endRunes[endCol:])
 		}
 
-		// record undo for each line being removed (reverse order)
+		// Record SetLine FIRST, then DeleteLine entries (reverse order)
+		// On undo (applied in reverse): lines get re-inserted first, then first line restored
+		e.undoMgr.Record(Action{
+			Type:      ActionSetLine,
+			Row:       row,
+			Text:      newLine,
+			PrevText:  firstLine,
+			CursorRow: e.cursor.Row(),
+			CursorCol: e.cursor.Col(),
+		})
 		for r := endRow; r > row; r-- {
 			e.undoMgr.Record(Action{
 				Type:      ActionDeleteLine,
@@ -222,14 +237,6 @@ func (e *Editor) deleteWord(count int) error {
 				CursorCol: e.cursor.Col(),
 			})
 		}
-		e.undoMgr.Record(Action{
-			Type:      ActionSetLine,
-			Row:       row,
-			Text:      newLine,
-			PrevText:  firstLine,
-			CursorRow: e.cursor.Row(),
-			CursorCol: e.cursor.Col(),
-		})
 		e.undoMgr.EndGroup()
 
 		// perform deletions
@@ -244,28 +251,30 @@ func (e *Editor) deleteWord(count int) error {
 	return nil
 }
 
-// deletes from cursor to end of line.
+// deletes from cursor to end of line (rune-indexed).
 func (e *Editor) deleteToLineEnd() error {
 	row := e.cursor.Row()
 	col := e.cursor.Col()
 	line, _ := e.buffer.GetLine(row)
+	runes := []rune(line)
 
-	if col >= len(line) {
+	if col >= len(runes) {
 		return nil
 	}
 
-	deleted := line[col:]
+	deleted := string(runes[col:])
 	e.register = Register{Content: deleted, Type: RegisterChar}
 
+	newLine := string(runes[:col])
 	e.undoMgr.Record(Action{
 		Type:      ActionSetLine,
 		Row:       row,
-		Text:      line[:col],
+		Text:      newLine,
 		PrevText:  line,
 		CursorRow: row,
 		CursorCol: col,
 	})
-	e.buffer.SetLine(row, line[:col])
+	e.buffer.SetLine(row, newLine)
 
 	// Clamp cursor
 	e.cursor.MoveTo(row, col, e.buffer)
