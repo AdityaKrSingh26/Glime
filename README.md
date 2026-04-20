@@ -357,3 +357,19 @@ Glime follows clean architecture with clear separation of concerns:
 - **Editor Layer** - Modal state machine, undo/redo, commands, search, file explorer
 - **Syntax Layer** - Regex-based tokenization, language detection, ANSI colorization
 - **UI Layer** - Screen rendering, status bar, line numbers, theme system
+
+## Blog Series
+
+Glime was built alongside a series of blog posts documenting the journey — from raw terminal control to modal editing and syntax highlighting. Each post dives deep into one aspect of building a terminal text editor from scratch.
+
+| # | Title |
+|---|-------|
+| 1 | [I Mass-Deleted a Production Config and Nano Couldn't Save Me](https://adityakrsingh26.medium.com/i-mass-deleted-a-production-config-and-nano-couldnt-save-me-4357f13badfb) |
+| 2 | [Taking Over the Terminal: Raw Mode and Escape Codes](https://adityakrsingh26.medium.com/taking-over-the-terminal-raw-mode-and-escape-codes-4ad4aac06943) |
+| 3 | [Decoding the Keyboard: Why Your Arrow Keys Send Three Bytes](https://adityakrsingh26.medium.com/decoding-the-keyboard-why-your-arrow-keys-send-three-bytes-e9eb95a0ec6e) |
+| 4 | [Storing Text Without Losing Your Mind (or Your Unicode)](https://adityakrsingh26.medium.com/storing-text-without-losing-your-mind-or-your-unicode-21dc6deb9565) |
+| 5 | [Painting Pixels in a World Made of Characters](https://adityakrsingh26.medium.com/painting-pixels-in-a-world-made-of-characters-e18e21ba357d) |
+| 6 | [The State Machine That Makes Modal Editing Click](https://adityakrsingh26.medium.com/the-state-machine-that-makes-modal-editing-click-57c817199da4) |
+| 7 | [3dd and the Algebra of Vim Commands](https://adityakrsingh26.medium.com/3dd-and-the-algebra-of-vim-commands-f0964b80bdfe) |
+| 8 | [Time Travel: Building Undo That Actually Works](https://adityakrsingh26.medium.com/time-travel-building-undo-that-actually-works-4197a6a577d2) |
+| 9 | [Making It Shine: Search, Syntax Highlighting, and the Status Bar](https://adityakrsingh26.medium.com/making-it-shine-search-syntax-highlighting-and-the-status-bar-785a282acb52) |
