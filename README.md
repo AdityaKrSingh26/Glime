@@ -373,3 +373,5 @@ Glime was built alongside a series of blog posts documenting the journey — fro
 | 7 | [3dd and the Algebra of Vim Commands](https://adityakrsingh26.medium.com/3dd-and-the-algebra-of-vim-commands-f0964b80bdfe) |
 | 8 | [Time Travel: Building Undo That Actually Works](https://adityakrsingh26.medium.com/time-travel-building-undo-that-actually-works-4197a6a577d2) |
 | 9 | [Making It Shine: Search, Syntax Highlighting, and the Status Bar](https://adityakrsingh26.medium.com/making-it-shine-search-syntax-highlighting-and-the-status-bar-785a282acb52) |
+
+More blogs on : [Medium](https://adityakrsingh26.medium.com)
